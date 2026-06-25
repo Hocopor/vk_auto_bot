@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.defaults import DEFAULT_TEXTS
 from app.core.models import Event, Purchase
 from app.core.services.events import create_event, delete_event, set_active
+from app.core.services import app_settings as app_settings_service
 from app.sheets import sync as sheets_sync
 
 logger = logging.getLogger(__name__)
@@ -165,7 +166,10 @@ async def create_event_submit(
         msg_need_contacts=_parse_optional_str(msg_need_contacts),
     )
 
-    sheet_id = await sheets_sync.create_sheet(f"{event.name} — участники")
+    owner_email = await app_settings_service.get_setting(
+        session, app_settings_service.KEY_SHEETS_OWNER_EMAIL
+    )
+    sheet_id = await sheets_sync.create_sheet(f"{event.name} — участники", owner_email=owner_email)
     if sheet_id:
         event.sheet_id = sheet_id
     else:

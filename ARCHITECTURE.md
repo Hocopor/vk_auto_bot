@@ -148,16 +148,30 @@ vk_auto_bot/
 ## 5. Переменные окружения (`.env.example`)
 
 ```
-VK_TOKEN=                 # токен сообщества
-VK_GROUP_ID=
+VK_TOKEN=                 # fallback токена; основное значение — в админке (БД)
+VK_GROUP_ID=              # пусто можно (валидатор → 0); основное — в админке
 DATABASE_URL=postgresql+asyncpg://user:pass@localhost/vk_auto_bot
-GOOGLE_SA_JSON=./secrets/service_account.json
+GOOGLE_SA_JSON=./secrets/service_account.json  # разовый шаг при деплое
 ADMIN_LOGIN=admin             # открыто
 ADMIN_PASSWORD_HASH=          # bcrypt-хэш (из scripts/gen_password_hash.py)
 SESSION_SECRET=               # секрет подписи cookie
+SECRETS_KEY=                  # Fernet-ключ шифрования секретов в БД (gen_secrets_key.py)
 RECEIPTS_DIR=./data/receipts  # хранение файлов чеков
 WORKER_INTERVAL_SEC=5
 ```
+
+### 5.1 Настройки заказчика в БД (таблица `app_settings`)
+
+VK-токен, VK group id и почта владельца Google-таблиц настраиваются заказчиком в
+админке (`/settings`) и хранятся в `app_settings` (key/value), а НЕ в `.env`:
+- `vk_token` — **шифруется** (`core/crypto.py`, Fernet, ключ `SECRETS_KEY`); в HTML
+  не отдаётся (показываем только «задан/не задан»).
+- `vk_group_id`, `sheets_owner_email` — открыто.
+- Бот читает токен из БД с fallback на `.env`; смена токена требует перезапуска бота.
+- Проверка подключений: «Проверить VK» (`bot/vk_check.py` → `groups.getById`),
+  «Проверить Google Sheets» (`sheets/sync.test_connection` — создаёт/шарит/удаляет
+  временный лист). При создании мероприятия лист авто-шарится на `sheets_owner_email`
+  как «редактор» (оригинал в Drive заказчика; владелец — service account).
 
 ---
 

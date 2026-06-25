@@ -11,6 +11,7 @@ from app.admin.deps import NotAuthenticated, require_login
 from app.admin.routes.events import router as events_router
 from app.admin.routes.moderation import router as moderation_router
 from app.admin.routes.participants import router as participants_router
+from app.admin.routes.settings import router as settings_router
 from app.admin.routes.winners import router as winners_router
 from app.core.config import settings
 from fastapi import Depends
@@ -27,6 +28,7 @@ app.include_router(events_router)
 app.include_router(moderation_router)
 app.include_router(participants_router)
 app.include_router(winners_router)
+app.include_router(settings_router)
 
 
 @app.exception_handler(NotAuthenticated)

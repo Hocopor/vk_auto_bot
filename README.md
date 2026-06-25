@@ -107,14 +107,17 @@ psql -U vkbot -d vk_auto_bot -h localhost -c "SELECT 1;"
 
 ```bash
 # Пример .env (заполнить реальными значениями)
-VK_TOKEN=your_vk_token
-VK_GROUP_ID=your_group_id
+# VK_TOKEN / VK_GROUP_ID можно оставить пустыми — заказчик вводит их в админке
+# (раздел «Настройки»); .env используется лишь как fallback для токена.
+VK_TOKEN=
+VK_GROUP_ID=
 DATABASE_URL=postgresql+asyncpg://vkbot:ПАРОЛЬ@localhost/vk_auto_bot
 GOOGLE_SA_JSON=/opt/vk_auto_bot/secrets/google-sa.json
 
 ADMIN_LOGIN=admin
 ADMIN_PASSWORD_HASH=bcrypt_hash_from_scripts/gen_password_hash.py
 SESSION_SECRET=very_long_random_string_at_least_32_chars
+SECRETS_KEY=fernet_key_from_scripts/gen_secrets_key.py
 
 TESSERACT_PATH=/usr/bin/tesseract
 ```
@@ -126,6 +129,20 @@ cd /opt/vk_auto_bot
 sudo -u vkbot python3 scripts/gen_password_hash.py
 # Ввести пароль, скопировать хэш в .env
 ```
+
+**Получить `SECRETS_KEY`** (ключ шифрования VK-токена в БД, разовый шаг при деплое):
+
+```bash
+cd /opt/vk_auto_bot
+sudo -u vkbot python3 scripts/gen_secrets_key.py
+# Скопировать строку в .env (один и тот же ключ для бота и админки)
+```
+
+**Настройка интеграций заказчиком (без правки файлов):** после запуска в админке
+есть раздел **«Настройки»** — там заказчик вводит VK-токен сообщества, VK group id и
+почту Google-аккаунта (на неё авто-расшариваются таблицы мероприятий как «редактор»).
+Кнопки «Проверить VK» и «Проверить Google Sheets» валидируют ввод и соединение.
+После смены VK-токена нужно перезапустить бот: `sudo systemctl restart vk-bot`.
 
 **Google Sheets** — положить service-account JSON в `/opt/vk_auto_bot/secrets/google-sa.json`:
 

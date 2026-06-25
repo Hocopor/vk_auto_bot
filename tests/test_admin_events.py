@@ -41,7 +41,7 @@ async def client(maker, sheet_calls, monkeypatch):
     async def _require_login_override():
         return "admin"
 
-    async def fake_create_sheet(title):
+    async def fake_create_sheet(title, owner_email=None):
         sheet_calls["created"].append(title)
         return "SHEET_TEST"
 

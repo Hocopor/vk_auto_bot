@@ -2,6 +2,33 @@
 
 ## Текущая точка
 
+- **2026-06-26. Фаза 3 (UX-конфигурация для заказчика) — ЗАВЕРШЕНА, тесты зелёные
+  118 passed / 1 skipped.** Цель: заказчик настраивает всё из админки, без «кишок».
+  Реализовано (кодер-сабагент по полному ТЗ оркестратора):
+  1. **Настройки в БД, не в `.env`:** новая таблица `app_settings` (key/value,
+     модель `AppSetting`, миграция `0002_app_settings`). Сервис
+     `core/services/app_settings.py` (`get_setting/set_setting/is_set`, константы
+     ключей `KEY_VK_TOKEN/KEY_VK_GROUP_ID/KEY_SHEETS_OWNER_EMAIL`).
+  2. **Шифрование секретов:** `core/crypto.py` (Fernet), ключ `SECRETS_KEY` в `.env`,
+     генератор `scripts/gen_secrets_key.py`. Шифруется только `vk_token`
+     (`SECRET_KEYS`). В HTML токен не отдаётся (поле password пустое, показываем
+     «задан/не задан»).
+  3. **Бот** (`bot/main.py`): VK-токен грузится из БД с fallback на `.env`; `Bot`
+     создаётся внутри `_amain` (модульного `bot` больше нет).
+  4. **Sheets** (`sheets/sync.py`): `create_sheet(title, owner_email=None)` шарит
+     лист владельцу как редактору (notify=False), если email задан — заказчик видит
+     ОРИГИНАЛ (не копию) в своём Drive; формально владелец остаётся service account.
+     Решение по владению: «авто-создание + авто-шар заказчику» (OAuth отклонён из-за
+     верификации Google под scope `spreadsheets`). `events.py` передаёт owner_email
+     из настроек.
+  5. **Админка**: страница `/settings` (`admin/routes/settings.py` + `settings.html`
+     + ссылка в base-nav) — ввод токена/group_id/почты + кнопки «Проверить VK»
+     (`bot/vk_check.py` → `groups.getById`) и «Проверить Google Sheets»
+     (`sync.test_connection` — создаёт/шарит/удаляет временный лист). Тест-кнопки
+     работают на СОХРАНЁННЫХ значениях.
+  - Что осталось ОДНОРАЗОВЫМ на стороне разработчика при деплое (НЕ заказчик):
+    создать Google service account + положить JSON; сгенерировать `SECRETS_KEY`.
+    Дальше VK-токен/group_id/почту заказчик вводит и проверяет сам из админки.
 - **2026-06-25 (правка деплоя).** По требованию заказчика reverse proxy переведён с
   nginx на **Caddy** (на сервере уже крутится Caddy с другими сайтами — подключаемся
   отдельным фрагментом `caddy/vk_admin.caddy` на порту 8080 через `import`, чужое не
@@ -66,13 +93,17 @@
 
 ## Следующий шаг
 
-- **Разработка завершена.** Остались задачи вне кода (на стороне заказчика/боевого
-  окружения):
-  1. Развернуть на сервере cloud.ru по README (Ubuntu): PostgreSQL, `.env` (боевой
-     VK_TOKEN, VK_GROUP_ID, DATABASE_URL, GOOGLE_SA_JSON, ADMIN_PASSWORD_HASH через
-     `scripts/gen_password_hash.py`, SESSION_SECRET), `alembic upgrade head`, systemd,
-     Caddy (фрагмент `caddy/vk_admin.caddy` → `/etc/caddy/conf.d/`, порт 8080,
+- **Разработка завершена (включая Фазу 3 — конфигурация из админки).** Остались
+  задачи вне кода (на стороне заказчика/боевого окружения):
+  1. Развернуть на сервере cloud.ru по README (Ubuntu): PostgreSQL, `.env`
+     (DATABASE_URL, GOOGLE_SA_JSON, ADMIN_PASSWORD_HASH через
+     `scripts/gen_password_hash.py`, SESSION_SECRET, **SECRETS_KEY** через
+     `scripts/gen_secrets_key.py`; VK_TOKEN/VK_GROUP_ID можно НЕ заполнять — заказчик
+     введёт в админке `/settings`), `alembic upgrade head` (поднимет и `0002_app_settings`),
+     systemd, Caddy (фрагмент `caddy/vk_admin.caddy` → `/etc/caddy/conf.d/`, порт 8080,
      открыть в security group). Tesseract (`tesseract-ocr tesseract-ocr-rus`) для OCR.
+  1a. Заказчик в админке `/settings` вводит VK-токен/group_id/почту Google и жмёт
+     «Проверить VK» / «Проверить Google Sheets». После ввода токена — рестарт бота.
   2. Ручной прогон полного сценария в реальном ВК (кодовое слово → чек → модерация →
      номера → таблица → розыгрыш) — единственное, что не покрыть локально без токена.
   3. Опц.: отправить заказчику открытые вопросы `ТЗ_ИТОГ §16` (помечено в Фазе 0).
@@ -129,6 +160,19 @@
   (`AttributeError __about__`, затем 72-byte ошибка). В `requirements.txt` закреплён
   `bcrypt>=4.0,<4.1`. Локально стоит bcrypt 4.0.1. На сервере не снимать верхнюю
   границу, пока не заменён passlib.
+- **Секреты-конфиг:** настройки заказчика (VK-токен/group_id/почта Sheets) — в
+  таблице `app_settings`, НЕ в `.env`. Токен шифруется Fernet (`core/crypto.py`),
+  мастер-ключ `SECRETS_KEY` в `.env` (генерить `scripts/gen_secrets_key.py`) —
+  одинаковый для процессов бота и админки. Смена VK-токена через админку требует
+  ПЕРЕЗАПУСКА бота (`systemctl restart vk-bot`) — горячей перезагрузки нет.
+- **`VK_GROUP_ID=` пустой в .env ронял ВЕСЬ pytest** на этапе collection
+  (pydantic-settings не парсит "" в int). Починено `field_validator` в `config.py`
+  (пусто/None → 0). Если в боевом `.env` поле пустое — теперь не падает.
+- **Sheets-владение:** лист создаёт service account (он владелец), заказчику даётся
+  доступ редактора через `share(owner_email, role="writer", notify=False)` — это тот
+  же оригинальный файл (в Drive заказчика «Доступные мне»), НЕ копия. Истинного
+  владения без OAuth не сделать; OAuth отклонён (верификация Google под scope
+  `spreadsheets`).
 - **Админка-тесты:** httpx `ASGITransport(app=app)` + `AsyncClient`; сессия-cookie
   переносится в рамках одного клиента; `follow_redirects=False` для проверки 303.
   `verify_credentials` читает `settings` динамически → в тестах monkeypatch

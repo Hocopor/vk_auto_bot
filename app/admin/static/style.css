@@ -148,3 +148,8 @@ table td {
 table th {
     background: #f0f2f5;
 }
+
+.banner { padding: 10px 14px; border-radius: 6px; margin: 12px 0; }
+.banner-ok { background: #e7f6e7; border: 1px solid #51a351; color: #2d662d; }
+.banner-err { background: #fdecec; border: 1px solid #c0392b; color: #922b21; }
+.hint { color: #666; font-size: 0.9em; margin: 4px 0 12px; }

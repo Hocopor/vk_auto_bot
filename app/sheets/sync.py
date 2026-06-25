@@ -27,11 +27,9 @@ def build_rows(records: list[tuple[int, str | None]]) -> list[list]:
     return rows
 
 
-async def create_sheet(title: str) -> str | None:
-    """Создать новую Google-таблицу с шапкой и публичным доступом на чтение.
-
-    Возвращает sheet_id или None при ошибке.
-    """
+async def create_sheet(title: str, owner_email: str | None = None) -> str | None:
+    """Создать Google-таблицу с шапкой и публичным доступом на чтение.
+    Если задан owner_email — расшарить её этому пользователю как редактору. Возвращает sheet_id или None."""
     try:
         def _create() -> str:
             client = get_client()
@@ -39,12 +37,35 @@ async def create_sheet(title: str) -> str | None:
             ws = sh.sheet1
             ws.update([HEADER])
             sh.share(None, perm_type="anyone", role="reader")
+            if owner_email:
+                sh.share(owner_email, perm_type="user", role="writer", notify=False)
             return sh.id
 
         return await asyncio.to_thread(_create)
     except Exception:
         logger.exception("Failed to create sheet %r", title)
         return None
+
+
+async def test_connection(owner_email: str | None = None) -> tuple[bool, str]:
+    """Проверка Google: создать временный лист, опц. расшарить на owner_email, удалить.
+    Возвращает (ok, сообщение). При успехе ничего не оставляет."""
+    try:
+        def _test() -> None:
+            client = get_client()
+            sh = client.create("__connection_test__")
+            try:
+                if owner_email:
+                    sh.share(owner_email, perm_type="user", role="writer", notify=False)
+            finally:
+                client.del_spreadsheet(sh.id)
+
+        await asyncio.to_thread(_test)
+        if owner_email:
+            return True, f"Успех: тестовый лист создан, расшарен на {owner_email} и удалён."
+        return True, "Успех: тестовый лист создан и удалён. Почта владельца не задана — таблицы будут доступны только по ссылке."
+    except Exception as e:
+        return False, f"Ошибка подключения к Google: {e}"
 
 
 async def rebuild(sheet_id: str, records: list[tuple[int, str | None]]) -> bool:
