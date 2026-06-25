@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Дашборд — Админка розыгрышей{% endblock %}
+
+{% block content %}
+<h1>Админка розыгрышей</h1>
+<p>Здравствуйте, {{ user }}!</p>
+
+<ul class="menu-list">
+    <li><a href="/events">Мероприятия</a></li>
+    <li><a href="/moderation">Модерация чеков</a></li>
+    <li><a href="/participants">Участники</a></li>
+    <li><a href="/winners">Победители</a></li>
+</ul>
+{% endblock %}

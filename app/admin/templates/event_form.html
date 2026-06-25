@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == "create" %}Создать мероприятие{% else %}Редактировать мероприятие{% endif %} — Админка розыгрышей{% endblock %}
+
+{% block content %}
+<h1>{% if mode == "create" %}Создать мероприятие{% else %}Редактировать мероприятие{% endif %}</h1>
+
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
+
+<form method="post"
+      action="{% if mode == 'create' %}/events{% else %}/events/{{ event.id }}{% endif %}"
+      enctype="multipart/form-data">
+
+    <p>
+        <label>Название мероприятия<br>
+        <input type="text" name="name" value="{{ event.name if event else '' }}" required>
+        </label>
+    </p>
+
+    <p>
+        <label>Кодовое слово (бот реагирует на него в сообщении)<br>
+        <input type="text" name="keyword" value="{{ event.keyword if event else '' }}" required>
+        </label>
+    </p>
+
+    <p>
+        <label>Цена за билет (₽)<br>
+        <input type="text" name="price" value="{{ event.price if event else '' }}" required>
+        </label>
+    </p>
+
+    <p>
+        <label>Номер от<br>
+        <input type="number" name="number_min" value="{{ event.number_min if event else 1 }}" required>
+        </label>
+    </p>
+
+    <p>
+        <label>Номер до<br>
+        <input type="number" name="number_max" value="{{ event.number_max if event else '' }}" required>
+        </label>
+    </p>
+
+    <p>
+        <label>Количество победителей<br>
+        <input type="number" name="winners_count" value="{{ event.winners_count if event else 1 }}">
+        </label>
+    </p>
+
+    <p>
+        <label>Начало (необязательно)<br>
+        <input type="datetime-local" name="starts_at" value="{{ event.starts_at.strftime('%Y-%m-%dT%H:%M') if event and event.starts_at else '' }}">
+        </label>
+    </p>
+
+    <p>
+        <label>Окончание (необязательно)<br>
+        <input type="datetime-local" name="ends_at" value="{{ event.ends_at.strftime('%Y-%m-%dT%H:%M') if event and event.ends_at else '' }}">
+        </label>
+    </p>
+
+    <p>
+        <label>Получатель платежа (для проверки ФИО в чеке, необязательно)<br>
+        <input type="text" name="expected_recipient" value="{{ event.expected_recipient if event and event.expected_recipient else '' }}">
+        </label>
+    </p>
+
+    <p>
+        <label>
+        <input type="checkbox" name="auto_confirm" {% if event and event.auto_confirm %}checked{% endif %}>
+        Автоматически подтверждать оплату по результатам OCR (без ручной модерации)
+        </label>
+    </p>
+
+    <p>
+        <strong>QR-код для оплаты</strong><br>
+        {% if event and event.qr_image_path %}
+        <em>Текущий QR загружен.</em><br>
+        {% endif %}
+        <input type="file" name="qr_file" accept="image/*">
+    </p>
+
+    <p class="hint">
+        Доступные плейсхолдеры в текстах: {name}, {numbers}, {count}, {price}, {sheet_url}, {event_name}
+    </p>
+
+    <p>
+        <label>Текст инструкции (после кодового слова)<br>
+        <textarea name="msg_instruction" rows="4" cols="60">{{ event.msg_instruction if event and event.msg_instruction else defaults.msg_instruction }}</textarea>
+        </label>
+    </p>
+
+    <p>
+        <label>Текст после подтверждения оплаты<br>
+        <textarea name="msg_after_payment" rows="4" cols="60">{{ event.msg_after_payment if event and event.msg_after_payment else defaults.msg_after_payment }}</textarea>
+        </label>
+    </p>
+
+    <p>
+        <label>Текст после получения чека<br>
+        <textarea name="msg_receipt_received" rows="4" cols="60">{{ event.msg_receipt_received if event and event.msg_receipt_received else defaults.msg_receipt_received }}</textarea>
+        </label>
+    </p>
+
+    <p>
+        <label>Текст запроса контактов (имя/телефон)<br>
+        <textarea name="msg_need_contacts" rows="4" cols="60">{{ event.msg_need_contacts if event and event.msg_need_contacts else defaults.msg_need_contacts }}</textarea>
+        </label>
+    </p>
+
+    <p>
+        <button type="submit">Сохранить</button>
+    </p>
+</form>
+{% endblock %}

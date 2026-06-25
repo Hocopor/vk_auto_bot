@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Модерация чеков{% endblock %}
+{% block content %}
+<h1>Модерация чеков</h1>
+<form method="get" action="/moderation">
+  <input type="text" name="q" value="{{ q }}" placeholder="Поиск: имя, телефон, vk_id, номер билета, сумма">
+  <button type="submit">Найти</button>
+</form>
+<p>
+  <a href="/moderation">Все</a> |
+  <a href="/moderation?status=manual_review"><strong>На проверке</strong></a> |
+  <a href="/moderation?status=approved">Одобрено</a> |
+  <a href="/moderation?status=rejected">Отклонено</a> |
+  <a href="/moderation?status=revoked">Отозвано</a>
+</p>
+<table class="events-table">
+<thead><tr><th>ID</th><th>Событие</th><th>Участник</th><th>Сумма</th><th>Билетов</th><th>Статус</th><th></th><th></th></tr></thead>
+<tbody>
+{% for row in rows %}
+{% set p = row.purchase %}
+<tr>
+  <td>{{ p.id }}</td>
+  <td>{{ p.event.name if p.event else "—" }}</td>
+  <td>{{ p.participant.provided_name or p.participant.vk_name or "—" if p.participant else "—" }}</td>
+  <td>{{ p.amount if p.amount is not none else (p.ocr_amount if p.ocr_amount is not none else "—") }}</td>
+  <td>{{ p.posters_count if p.posters_count is not none else "—" }}</td>
+  <td>{{ p.status.value }}</td>
+  <td>{% if row.partial %}⚠ частичная{% endif %}</td>
+  <td><a href="/moderation/{{ p.id }}">Открыть</a></td>
+</tr>
+{% else %}
+<tr><td colspan="8">Покупок не найдено.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}

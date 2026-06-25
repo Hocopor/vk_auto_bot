@@ -1,0 +1,28 @@
+# Caddy-фрагмент для админки ВК-бота (доступ по IP сервера, без домена).
+#
+# Подключается к УЖЕ РАБОТАЮЩЕМУ Caddy через `import` (см. README §7),
+# чтобы не трогать остальные сайты на сервере. Слушает ОТДЕЛЬНЫЙ порт 8080,
+# конфликтов с :80/:443 других сайтов нет.
+#
+# Без домена TLS не выпускается — это обычный HTTP на :8080.
+# Если порт занят — поменяй 8080 здесь и открой его в firewall/security group.
+
+:8080 {
+	# Чек-файлы могут быть крупными
+	request_body {
+		max_size 10MB
+	}
+
+	# Статика админки отдаётся самим Caddy (root указывает на app/admin,
+	# запрос /static/... → /opt/vk_auto_bot/app/admin/static/...)
+	handle /static/* {
+		root * /opt/vk_auto_bot/app/admin
+		file_server
+	}
+
+	# Всё остальное — на uvicorn (admin-web). Caddy сам проставляет
+	# X-Forwarded-For / X-Forwarded-Proto / Host.
+	handle {
+		reverse_proxy 127.0.0.1:8000
+	}
+}

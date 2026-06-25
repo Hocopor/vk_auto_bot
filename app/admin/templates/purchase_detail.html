@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Покупка #{{ purchase.id }}{% endblock %}
+{% block content %}
+{% set p = purchase %}
+<p><a href="/moderation">&larr; Назад к очереди</a></p>
+<h1>Покупка #{{ p.id }}</h1>
+{% if partial %}<p style="color:darkorange;"><strong>⚠ Частичная/некратная оплата</strong></p>{% endif %}
+
+<h2>Статус</h2>
+<p>{{ p.status.value }}{% if p.moderated_by %} (модератор: {{ p.moderated_by }}){% endif %}</p>
+
+<h2>Событие</h2>
+<p>{{ p.event.name if p.event else "—" }}</p>
+
+<h2>Участник</h2>
+<ul>
+  <li>VK ID: {{ p.participant.vk_user_id if p.participant else "—" }}</li>
+  <li>VK имя: {{ p.participant.vk_name if p.participant else "—" }}</li>
+  <li>VK ссылка:
+    {% if p.participant and p.participant.vk_link %}
+      <a href="{{ p.participant.vk_link }}" target="_blank">{{ p.participant.vk_link }}</a>
+    {% else %}—{% endif %}
+  </li>
+  <li>Указанное имя: {{ p.participant.provided_name if p.participant else "—" }}</li>
+  <li>Телефон: {{ p.participant.phone if p.participant else "—" }}</li>
+</ul>
+
+<h2>Оплата</h2>
+<ul>
+  <li>Сумма по OCR: {{ p.ocr_amount if p.ocr_amount is not none else "—" }}</li>
+  <li>Сумма (подтверждённая): {{ p.amount if p.amount is not none else "—" }}</li>
+  <li>Кол-во билетов: {{ p.posters_count if p.posters_count is not none else "—" }}</li>
+  <li>Уверенность OCR: {{ p.ocr_confidence if p.ocr_confidence is not none else "—" }}</li>
+  <li>Номера:
+    {% if p.poster_numbers %}{{ p.poster_numbers|map(attribute='number')|join(', ') }}{% else %}—{% endif %}
+  </li>
+</ul>
+
+<h2>Чек</h2>
+{% if p.receipt_file_path %}
+<p><img src="/moderation/{{ p.id }}/receipt" alt="Чек" style="max-width:400px;"></p>
+{% else %}
+<p>Чек не загружен.</p>
+{% endif %}
+
+<h2>Действия</h2>
+<form method="post" action="/moderation/{{ p.id }}/approve" style="display:inline">
+  <button type="submit">Одобрить</button>
+</form>
+<form method="post" action="/moderation/{{ p.id }}/reject" style="display:inline" onsubmit="return confirm('Отклонить покупку?')">
+  <button type="submit">Отклонить</button>
+</form>
+<form method="post" action="/moderation/{{ p.id }}/revoke" style="display:inline" onsubmit="return confirm('Отозвать присвоенные номера? Они станут свободны.')">
+  <button type="submit">Отозвать номера</button>
+</form>
+
+<h3>Изменить сумму</h3>
+<form method="post" action="/moderation/{{ p.id }}/amount">
+  <input type="text" name="amount" value="{{ p.amount if p.amount is not none else '' }}">
+  <button type="submit">Сохранить сумму</button>
+</form>
+
+<h3>Изменить контакты</h3>
+<form method="post" action="/moderation/{{ p.id }}/contacts">
+  <input type="text" name="provided_name" value="{{ p.participant.provided_name if p.participant and p.participant.provided_name else '' }}" placeholder="Имя">
+  <input type="text" name="phone" value="{{ p.participant.phone if p.participant and p.participant.phone else '' }}" placeholder="Телефон">
+  <button type="submit">Сохранить контакты</button>
+</form>
+{% endblock %}

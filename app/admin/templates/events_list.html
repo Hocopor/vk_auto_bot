@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Мероприятия — Админка розыгрышей{% endblock %}
+
+{% block content %}
+<h1>Мероприятия</h1>
+<p><a href="/events/new">Создать мероприятие</a></p>
+
+<table class="events-table">
+    <thead>
+        <tr>
+            <th>Название</th>
+            <th>Кодовое слово</th>
+            <th>Статус</th>
+            <th>Цена</th>
+            <th>Диапазон номеров</th>
+            <th>Начало</th>
+            <th>Окончание</th>
+            <th>Google-лист</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for event in events %}
+        <tr>
+            <td>{{ event.name }}</td>
+            <td>{{ event.keyword }}</td>
+            <td>{% if event.is_active %}Активно{% else %}Остановлено{% endif %}</td>
+            <td>{{ event.price }}</td>
+            <td>{{ event.number_min }}–{{ event.number_max }}</td>
+            <td>{{ event.starts_at if event.starts_at else "—" }}</td>
+            <td>{{ event.ends_at if event.ends_at else "—" }}</td>
+            <td>
+                {% if event.sheet_id %}
+                <a href="https://docs.google.com/spreadsheets/d/{{ event.sheet_id }}" target="_blank">Открыть</a>
+                {% else %}
+                —
+                {% endif %}
+            </td>
+            <td class="actions">
+                <a href="/events/{{ event.id }}/edit">Ред.</a>
+                <form method="post" action="/events/{{ event.id }}/toggle" style="display:inline">
+                    <button type="submit">{% if event.is_active %}Стоп{% else %}Старт{% endif %}</button>
+                </form>
+                <form method="post" action="/events/{{ event.id }}/delete" style="display:inline"
+                      onsubmit="return confirm('Удалить мероприятие и все его данные?')">
+                    <button type="submit">Удалить</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="9">Мероприятий пока нет.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

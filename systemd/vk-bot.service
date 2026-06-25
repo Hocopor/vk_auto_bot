@@ -1,0 +1,18 @@
+[Unit]
+Description=VK Auto Bot (Long Poll + worker)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vkbot
+Group=vkbot
+WorkingDirectory=/opt/vk_auto_bot
+ExecStart=/opt/vk_auto_bot/.venv/bin/python -m app.bot.main
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
