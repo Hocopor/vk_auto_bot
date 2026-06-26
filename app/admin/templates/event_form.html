@@ -105,12 +105,12 @@
             <div class="field-grid">
                 <div class="field">
                     <label for="f-starts">Начало</label>
-                    <input type="datetime-local" id="f-starts" name="starts_at" value="{{ event.starts_at | localdt }}">
+                    <input type="datetime-local" id="f-starts" name="starts_at" value="{{ (event.starts_at if event else none) | localdt }}">
                     <p class="field-hint">Московское время. Оставьте пустым — бот работает сразу.</p>
                 </div>
                 <div class="field">
                     <label for="f-ends">Окончание</label>
-                    <input type="datetime-local" id="f-ends" name="ends_at" value="{{ event.ends_at | localdt }}">
+                    <input type="datetime-local" id="f-ends" name="ends_at" value="{{ (event.ends_at if event else none) | localdt }}">
                     <p class="field-hint">Московское время. Оставьте пустым — бот работает без ограничения.</p>
                 </div>
             </div>

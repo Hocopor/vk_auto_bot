@@ -34,6 +34,8 @@ def to_local(dt: datetime | None) -> datetime | None:
     """Конвертирует aware (или наивный, считая его UTC) datetime в локальную TZ."""
     if dt is None:
         return None
+    if not isinstance(dt, datetime):
+        return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(LOCAL_TZ)
