@@ -24,8 +24,12 @@ class Settings(BaseSettings):
     secrets_key: str = ""  # Fernet-ключ для шифрования секретов в БД (scripts/gen_secrets_key.py)
     receipts_dir: str = "./data/receipts"
     qr_dir: str = "./data/qr"  # хранение загруженных QR-картинок мероприятий
+    # Внешний адрес админ-сервера для публичных ссылок на таблицу участников,
+    # которые бот шлёт в сообщениях. Например: http://185.228.72.118:8080
+    public_base_url: str = ""
     worker_interval_sec: int = 5
     tesseract_cmd: str = ""  # путь к tesseract.exe, если не в PATH (опционально)
+    display_timezone: str = "Europe/Moscow"  # таймзона для отображения и ввода дат в админке
 
 
 settings = Settings()

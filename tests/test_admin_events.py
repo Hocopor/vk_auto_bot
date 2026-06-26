@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.admin.deps import get_session, require_login
 from app.admin.main import app
-from app.admin.routes import events as events_routes
 from app.core import models  # noqa: F401  (наполняет Base.metadata)
 from app.core.db import Base
 from app.core.models import Event, Participant, PosterNumber, Purchase, PurchaseStatus
@@ -28,29 +27,13 @@ def maker(engine):
 
 
 @pytest.fixture
-def sheet_calls():
-    return {"created": [], "deleted": []}
-
-
-@pytest.fixture
-async def client(maker, sheet_calls, monkeypatch):
+async def client(maker):
     async def _get_session_override():
         async with maker() as session:
             yield session
 
     async def _require_login_override():
         return "admin"
-
-    async def fake_create_sheet(title, owner_email=None):
-        sheet_calls["created"].append(title)
-        return "SHEET_TEST"
-
-    async def fake_delete_sheet(sheet_id):
-        sheet_calls["deleted"].append(sheet_id)
-        return True
-
-    monkeypatch.setattr(events_routes.sheets_sync, "create_sheet", fake_create_sheet)
-    monkeypatch.setattr(events_routes.sheets_sync, "delete_sheet", fake_delete_sheet)
 
     app.dependency_overrides[get_session] = _get_session_override
     app.dependency_overrides[require_login] = _require_login_override
@@ -83,7 +66,7 @@ def event_form_data(**overrides):
     return data
 
 
-async def test_create_event(client, maker, sheet_calls):
+async def test_create_event(client, maker):
     resp = await client.post(
         "/events",
         data=event_form_data(),
@@ -102,9 +85,6 @@ async def test_create_event(client, maker, sheet_calls):
         assert event.msg_after_payment
         assert event.msg_receipt_received
         assert event.msg_need_contacts
-        assert event.sheet_id == "SHEET_TEST"
-
-    assert sheet_calls["created"] == ["Розыгрыш постеров — участники"]
 
 
 async def test_list_events(client):
@@ -152,7 +132,7 @@ async def test_toggle_event(client, maker):
         assert updated.is_active is (not was_active)
 
 
-async def test_delete_event_cascade(client, maker, sheet_calls):
+async def test_delete_event_cascade(client, maker):
     await client.post("/events", data=event_form_data(), follow_redirects=False)
 
     async with maker() as session:
@@ -196,8 +176,6 @@ async def test_delete_event_cascade(client, maker, sheet_calls):
 
         result = await session.execute(select(PosterNumber).where(PosterNumber.event_id == event_id))
         assert result.scalars().all() == []
-
-    assert sheet_calls["deleted"] == ["SHEET_TEST"]
 
 
 async def test_other_events_untouched_on_delete(client, maker):

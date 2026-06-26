@@ -11,6 +11,7 @@ from app.bot import dialog
 from app.core.config import settings
 from app.core.db import async_session_maker
 from app.core.placeholders import render
+from app.core.services import public_table
 from app.core.services.participants import upsert_participant
 from app.ocr import parse as ocr_parse
 from app.ocr import recognize as ocr_recognize
@@ -56,7 +57,7 @@ async def _build_ctx(event, numbers=None) -> dict:
     ctx: dict = {
         "event_name": event.name,
         "price": event.price,
-        "sheet_url": f"https://docs.google.com/spreadsheets/d/{event.sheet_id}" if event.sheet_id else None,
+        "sheet_url": public_table.public_table_url(event.id),
     }
     if numbers is not None:
         from app.core.placeholders import format_numbers
@@ -159,8 +160,9 @@ async def _handle_receipt(
         is_duplicate=is_dup,
     )
 
-    ctx = await _build_ctx(event)
-    await message.answer(render(event.msg_receipt_received, ctx))
+    if event.send_receipt_received:
+        ctx = await _build_ctx(event)
+        await message.answer(render(event.msg_receipt_received, ctx))
     # Присвоение номеров и финальное уведомление — отдельный воркер (этап 2.7).
     _ = purchase
 
@@ -180,10 +182,22 @@ async def _handle_keyword(
     await upsert_participant(session, event.id, user_id, vk_name=vk_name, vk_link=vk_link)
     await dialog.set_dialog(session, user_id, event.id)
 
-    text = render(event.msg_instruction, await _build_ctx(event))
-    if event.qr_image_path and os.path.exists(event.qr_image_path):
-        uploader = PhotoMessageUploader(bot.api)
-        attachment = await uploader.upload(file_source=event.qr_image_path)
+    text = render(event.msg_instruction, await _build_ctx(event)) if event.send_instruction else ""
+
+    # QR прикрепляем «по возможности»: если у токена нет права «Фотографии»
+    # (VK API Error 15) или upload падает по иной причине — инструкция всё равно
+    # должна дойти до участника. Иначе бот молчит и кажется «нерабочим».
+    attachment = None
+    if event.send_qr and event.qr_image_path and os.path.exists(event.qr_image_path):
+        try:
+            uploader = PhotoMessageUploader(bot.api)
+            attachment = await uploader.upload(file_source=event.qr_image_path)
+        except Exception:
+            logger.exception(
+                "Не удалось загрузить QR (event_id=%s) — шлю инструкцию без картинки. "
+                "Проверьте, что у VK-токена сообщества включено право «Фотографии».",
+                event.id,
+            )
+
+    if text or attachment:
         await message.answer(text, attachment=attachment)
-    else:
-        await message.answer(text)

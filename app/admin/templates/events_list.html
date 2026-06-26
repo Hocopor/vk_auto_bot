@@ -3,56 +3,80 @@
 {% block title %}Мероприятия — Админка розыгрышей{% endblock %}
 
 {% block content %}
-<h1>Мероприятия</h1>
-<p><a href="/events/new">Создать мероприятие</a></p>
+<div class="page-head">
+    <div>
+        <h1>Мероприятия</h1>
+        <p class="lead">Розыгрыши, которые ведёт бот. Создавайте новые, редактируйте тексты и запускайте приём заявок.</p>
+    </div>
+    <div class="page-head-actions">
+        <a href="/events/new" class="btn btn-primary">+ Создать мероприятие</a>
+    </div>
+</div>
 
-<table class="events-table">
-    <thead>
-        <tr>
-            <th>Название</th>
-            <th>Кодовое слово</th>
-            <th>Статус</th>
-            <th>Цена</th>
-            <th>Диапазон номеров</th>
-            <th>Начало</th>
-            <th>Окончание</th>
-            <th>Google-лист</th>
-            <th>Действия</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for event in events %}
-        <tr>
-            <td>{{ event.name }}</td>
-            <td>{{ event.keyword }}</td>
-            <td>{% if event.is_active %}Активно{% else %}Остановлено{% endif %}</td>
-            <td>{{ event.price }}</td>
-            <td>{{ event.number_min }}–{{ event.number_max }}</td>
-            <td>{{ event.starts_at if event.starts_at else "—" }}</td>
-            <td>{{ event.ends_at if event.ends_at else "—" }}</td>
-            <td>
-                {% if event.sheet_id %}
-                <a href="https://docs.google.com/spreadsheets/d/{{ event.sheet_id }}" target="_blank">Открыть</a>
-                {% else %}
-                —
-                {% endif %}
-            </td>
-            <td class="actions">
-                <a href="/events/{{ event.id }}/edit">Ред.</a>
-                <form method="post" action="/events/{{ event.id }}/toggle" style="display:inline">
-                    <button type="submit">{% if event.is_active %}Стоп{% else %}Старт{% endif %}</button>
-                </form>
-                <form method="post" action="/events/{{ event.id }}/delete" style="display:inline"
-                      onsubmit="return confirm('Удалить мероприятие и все его данные?')">
-                    <button type="submit">Удалить</button>
-                </form>
-            </td>
-        </tr>
-        {% else %}
-        <tr>
-            <td colspan="9">Мероприятий пока нет.</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+{% if events %}
+<div class="table-wrap">
+    <table class="data">
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Кодовое слово</th>
+                <th>Статус</th>
+                <th>Цена</th>
+                <th>Номера</th>
+                <th>Начало</th>
+                <th>Окончание</th>
+                <th>Список</th>
+                <th class="cell-actions">Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for event in events %}
+            <tr>
+                <td><strong>{{ event.name }}</strong></td>
+                <td><span class="badge badge-slate">{{ event.keyword }}</span></td>
+                <td>
+                    {% if event.is_active %}
+                    <span class="badge badge-green"><span class="dot"></span>Активно</span>
+                    {% else %}
+                    <span class="badge badge-slate"><span class="dot"></span>Остановлено</span>
+                    {% endif %}
+                </td>
+                <td class="num">{{ event.price }} ₽</td>
+                <td class="num">{{ event.number_min }}–{{ event.number_max }}</td>
+                <td class="num">{{ event.starts_at.strftime('%d.%m.%Y %H:%M') if event.starts_at else "—" }}</td>
+                <td class="num">{{ event.ends_at.strftime('%d.%m.%Y %H:%M') if event.ends_at else "—" }}</td>
+                <td><a href="/p/{{ event.id }}" target="_blank">Открыть</a></td>
+                <td class="cell-actions">
+                    <div class="btn-row">
+                        <a href="/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">Изменить</a>
+                        <form method="post" action="/events/{{ event.id }}/toggle" style="display:inline" data-no-loading>
+                            <button type="submit" class="btn btn-sm {% if event.is_active %}btn-secondary{% else %}btn-success{% endif %}">
+                                {% if event.is_active %}Стоп{% else %}Старт{% endif %}
+                            </button>
+                        </form>
+                        <form method="post" action="/events/{{ event.id }}/delete" style="display:inline" data-no-loading
+                              onsubmit="return confirm('Удалить мероприятие и все его данные? Это действие необратимо.')">
+                            <button type="submit" class="btn btn-danger btn-sm">Удалить</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">
+        <div class="empty-emoji">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#4338ca" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>
+            </svg>
+        </div>
+        <h3>Мероприятий пока нет</h3>
+        <p>Создайте первый розыгрыш — задайте кодовое слово, цену билета и тексты сообщений.</p>
+        <a href="/events/new" class="btn btn-primary">+ Создать мероприятие</a>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

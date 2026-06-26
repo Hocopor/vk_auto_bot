@@ -58,6 +58,21 @@ class Event(Base):
     msg_need_contacts: Mapped[str] = mapped_column(Text, nullable=False, default="")
     qr_image_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     auto_confirm: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    send_instruction: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    send_qr: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    send_receipt_received: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    send_after_payment: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    send_need_contacts: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     expected_recipient: Mapped[str | None] = mapped_column(Text, nullable=True)
     sheet_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

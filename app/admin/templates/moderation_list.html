@@ -1,36 +1,89 @@
 {% extends "base.html" %}
-{% block title %}Модерация чеков{% endblock %}
+{% block title %}Модерация чеков — Админка{% endblock %}
+
+{# Человеческие подписи и цвета для статусов покупок #}
+{% set status_map = {
+    "pending_ocr":    ("Распознаётся", "badge-slate"),
+    "auto_confirmed": ("Подтверждено автоматически", "badge-green"),
+    "manual_review":  ("На проверке", "badge-amber"),
+    "approved":       ("Одобрено", "badge-green"),
+    "rejected":       ("Отклонено", "badge-red"),
+    "revoked":        ("Отозвано", "badge-slate")
+} %}
+
+{% macro status_badge(value) %}
+    {% set s = status_map.get(value, (value, "badge-slate")) %}
+    <span class="badge {{ s[1] }}"><span class="dot"></span>{{ s[0] }}</span>
+{% endmacro %}
+
 {% block content %}
-<h1>Модерация чеков</h1>
-<form method="get" action="/moderation">
-  <input type="text" name="q" value="{{ q }}" placeholder="Поиск: имя, телефон, vk_id, номер билета, сумма">
-  <button type="submit">Найти</button>
-</form>
-<p>
-  <a href="/moderation">Все</a> |
-  <a href="/moderation?status=manual_review"><strong>На проверке</strong></a> |
-  <a href="/moderation?status=approved">Одобрено</a> |
-  <a href="/moderation?status=rejected">Отклонено</a> |
-  <a href="/moderation?status=revoked">Отозвано</a>
-</p>
-<table class="events-table">
-<thead><tr><th>ID</th><th>Событие</th><th>Участник</th><th>Сумма</th><th>Билетов</th><th>Статус</th><th></th><th></th></tr></thead>
-<tbody>
-{% for row in rows %}
-{% set p = row.purchase %}
-<tr>
-  <td>{{ p.id }}</td>
-  <td>{{ p.event.name if p.event else "—" }}</td>
-  <td>{{ p.participant.provided_name or p.participant.vk_name or "—" if p.participant else "—" }}</td>
-  <td>{{ p.amount if p.amount is not none else (p.ocr_amount if p.ocr_amount is not none else "—") }}</td>
-  <td>{{ p.posters_count if p.posters_count is not none else "—" }}</td>
-  <td>{{ p.status.value }}</td>
-  <td>{% if row.partial %}⚠ частичная{% endif %}</td>
-  <td><a href="/moderation/{{ p.id }}">Открыть</a></td>
-</tr>
+<div class="page-head">
+    <div>
+        <h1>Модерация чеков</h1>
+        <p class="lead">Проверяйте присланные чеки об оплате и подтверждайте участие.</p>
+    </div>
+</div>
+
+<div class="toolbar">
+    <form method="get" action="/moderation" class="grow" data-no-loading>
+        <input type="text" class="grow" name="q" value="{{ q }}" placeholder="Поиск: имя, телефон, vk_id, номер билета, сумма">
+        <button type="submit" class="btn btn-secondary">Найти</button>
+    </form>
+</div>
+
+<div class="filter-pills">
+    <a class="filter-pill {% if not status %}is-active{% endif %}" href="/moderation">Все</a>
+    <a class="filter-pill {% if status == 'manual_review' %}is-active{% endif %}" href="/moderation?status=manual_review">На проверке</a>
+    <a class="filter-pill {% if status == 'approved' %}is-active{% endif %}" href="/moderation?status=approved">Одобрено</a>
+    <a class="filter-pill {% if status == 'rejected' %}is-active{% endif %}" href="/moderation?status=rejected">Отклонено</a>
+    <a class="filter-pill {% if status == 'revoked' %}is-active{% endif %}" href="/moderation?status=revoked">Отозвано</a>
+</div>
+
+{% if rows %}
+<div class="table-wrap">
+    <table class="data">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Мероприятие</th>
+                <th>Участник</th>
+                <th>Сумма</th>
+                <th>Билетов</th>
+                <th>Статус</th>
+                <th></th>
+                <th class="cell-actions"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            {% set p = row.purchase %}
+            <tr>
+                <td class="num muted">#{{ p.id }}</td>
+                <td>{{ p.event.name if p.event else "—" }}</td>
+                <td>{{ p.participant.provided_name or p.participant.vk_name or "—" if p.participant else "—" }}</td>
+                <td class="num">{{ p.amount if p.amount is not none else (p.ocr_amount if p.ocr_amount is not none else "—") }}</td>
+                <td class="num">{{ p.posters_count if p.posters_count is not none else "—" }}</td>
+                <td>{{ status_badge(p.status.value) }}</td>
+                <td>{% if row.partial %}<span class="tag-warn">⚠ частичная</span>{% endif %}</td>
+                <td class="cell-actions">
+                    <a href="/moderation/{{ p.id }}" class="btn btn-secondary btn-sm">Открыть</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% else %}
-<tr><td colspan="8">Покупок не найдено.</td></tr>
-{% endfor %}
-</tbody>
-</table>
+<div class="card">
+    <div class="empty-state">
+        <div class="empty-emoji">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#4338ca" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>
+            </svg>
+        </div>
+        <h3>Покупок не найдено</h3>
+        <p>Здесь появятся чеки, присланные участниками. Попробуйте сбросить фильтр или поиск.</p>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

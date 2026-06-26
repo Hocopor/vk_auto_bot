@@ -1,47 +1,71 @@
 {% extends "base.html" %}
-{% block title %}Победители{% endblock %}
+{% block title %}Победители — Админка{% endblock %}
 {% block content %}
-<h1>Победители</h1>
-<form method="get" action="/winners">
-  <select name="event_id" onchange="this.form.submit()">
-    <option value="">— выберите мероприятие —</option>
-    {% for e in events %}
-    <option value="{{ e.id }}" {% if event_id==e.id %}selected{% endif %}>{{ e.name }}</option>
-    {% endfor %}
-  </select>
-  <button type="submit">Показать</button>
-</form>
+<div class="page-head">
+    <div>
+        <h1>Победители</h1>
+        <p class="lead">Выберите розыгрыш и запустите выбор победителей из оплаченных номеров.</p>
+    </div>
+</div>
 
-{% if event %}
-<form method="post" action="/winners/{{ event.id }}/draw">
-  <button type="submit">Разыграть {{ event.winners_count }} победителей</button>
-</form>
-{% endif %}
+<div class="toolbar">
+    <form method="get" action="/winners" data-no-loading>
+        <select name="event_id" onchange="this.form.submit()">
+            <option value="">— выберите мероприятие —</option>
+            {% for e in events %}
+            <option value="{{ e.id }}" {% if event_id==e.id %}selected{% endif %}>{{ e.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary">Показать</button>
+    </form>
+
+    {% if event %}
+    <form method="post" action="/winners/{{ event.id }}/draw" data-loading-text="Разыгрываем…">
+        <button type="submit" class="btn btn-primary">🎲 Разыграть {{ event.winners_count }} победителей</button>
+    </form>
+    {% endif %}
+</div>
 
 {% if winners is not none %}
-  {% if winners %}
-  <table class="events-table">
-    <thead>
-      <tr><th>Номер</th><th>Имя (указано)</th><th>Имя VK</th><th>Ссылка</th><th>Телефон</th><th>VK ID</th></tr>
-    </thead>
-    <tbody>
-      {% for w in winners %}
-      <tr class="winner-row">
-        <td>{{ w.number }}</td>
-        <td>{{ w.participant.provided_name or "" }}</td>
-        <td>{{ w.participant.vk_name or "" }}</td>
-        <td>{% if w.participant.vk_link %}<a href="{{ w.participant.vk_link }}" target="_blank">{{ w.participant.vk_link }}</a>{% endif %}</td>
-        <td>{{ w.participant.phone or "" }}</td>
-        <td>{{ w.participant.vk_user_id }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% if event and winners|length < event.winners_count %}
-  <p class="warning">Внимание: оплаченных номеров меньше, чем требуется победителей ({{ winners|length }} из {{ event.winners_count }}).</p>
-  {% endif %}
-  {% else %}
-  <p>Нет ни одного оплаченного номера для розыгрыша.</p>
-  {% endif %}
+    {% if winners %}
+    {% if event and winners|length < event.winners_count %}
+    <div class="banner banner-warn">
+        Внимание: оплаченных номеров меньше, чем нужно победителей ({{ winners|length }} из {{ event.winners_count }}).
+    </div>
+    {% endif %}
+    <div class="table-wrap">
+        <table class="data">
+            <thead>
+                <tr>
+                    <th>Номер</th>
+                    <th>Имя (указано)</th>
+                    <th>Имя ВКонтакте</th>
+                    <th>Ссылка</th>
+                    <th>Телефон</th>
+                    <th>VK ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in winners %}
+                <tr class="winner-row">
+                    <td class="num">{{ w.number }}</td>
+                    <td>{{ w.participant.provided_name or "" }}</td>
+                    <td>{{ w.participant.vk_name or "" }}</td>
+                    <td>{% if w.participant.vk_link %}<a href="{{ w.participant.vk_link }}" target="_blank">Профиль</a>{% endif %}</td>
+                    <td class="num">{{ w.participant.phone or "" }}</td>
+                    <td class="num">{{ w.participant.vk_user_id }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="empty-state">
+            <h3>Нет номеров для розыгрыша</h3>
+            <p>У этого мероприятия пока нет ни одного оплаченного номера.</p>
+        </div>
+    </div>
+    {% endif %}
 {% endif %}
 {% endblock %}

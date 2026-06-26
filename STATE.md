@@ -2,6 +2,79 @@
 
 ## Текущая точка
 
+- **2026-06-26. ФАЗА 4 — фидбек заказчика после демо. В РАБОТЕ.** Доступ к боевому
+  серверу получен (root@185.228.72.118, проект в `/opt/vk_auto_bot`, копия в
+  `/root/vk_auto_bot`). Коннект — paramiko из `scripts/_ssh_run.py` (пароль в env
+  `SSH_PASS`, в код НЕ писать; helper временный, удалить после фазы).
+  - **Корневой баг «бот не реагирует на кодовое слово» НАЙДЕН и захотфикшен.** Бот
+    НА САМОМ ДЕЛЕ реагировал: находил событие, но падал на отправке QR —
+    `VK API Error 15: Access denied ... current scopes` на
+    `photos.getMessagesUploadServer`. **У VK-токена сообщества нет права
+    «Фотографии».** Загрузка QR не была обёрнута в try/except → падал ВЕСЬ
+    обработчик `_handle_keyword`, участник не получал даже текст инструкции.
+    **Хотфикс залит и в бою:** `handlers.py:_handle_keyword` теперь шлёт текст
+    всегда, QR — best-effort в try/except (`attachment=None` при ошибке). Бот
+    перезапущен, active. Чтобы прикреплялся QR — заказчику пересоздать ключ
+    сообщества с правом «Фотографии».
+  - Данные на сервере: 1 событие (active, keyword задан, starts_at/ends_at = NULL —
+    таймзона на ЭТОТ инцидент не влияла), alembic на `0002` (head), оба сервиса active.
+  - **Латентный баг таймзоны (чиню в Фазе 4):** `datetime-local` в форме даёт наивное
+    локальное время, а `is_event_open` сравнивает с `datetime.now(utc)` → если задать
+    «Начало = сейчас» по МСК, бот молчал бы 3 часа. Фикс: трактовать ввод как
+    Europe/Moscow, хранить UTC-aware, показывать обратно в МСК.
+  - **Backend-агент ЗАВЕРШЁН (123 passed, 1 skip):** timeutil.py (Europe/Moscow,
+    parse_local_datetime/to_local/format_local_input), config `display_timezone`,
+    events.py на parse_local_datetime; общий `app/admin/templating.py` (единый
+    `templates`, фильтр `localdt`, глобал `VAR_LABELS`) — все route-модули переведены
+    на него; миграция `alembic/versions/0003_message_toggles.py`
+    (down_revision=`0002_app_settings`) + 5 bool-колонок в Event; гейтинг в
+    handlers/worker; в worker ctx добавлен `event_name`. Миграции лежат в
+    `alembic/versions/` (НЕ `app/alembic/versions/`).
+  - **Frontend-агент ЕЩЁ РАБОТАЕТ** (фоном правит шаблоны `app/admin/templates/*` и
+    `static/*` — их mtime новее STATE, это норма). Дождаться его, затем: полный
+    pytest → деплой кода+шаблонов на сервер → `alembic upgrade head` (0003) →
+    рестарт сервисов → smoke + боевой прогон кодового слова.
+  - **План Фазы 4** (см. PLAN.md «Фаза 4»): (1) backend-агент — устойчивость QR
+    (сделано хотфиксом, закрепить), таймзона, тумблеры типов сообщений
+    (миграция 0003: send_instruction/send_receipt_received/send_after_payment/
+    send_need_contacts/send_qr, default TRUE), гейтинг в handlers/worker, чтение
+    чекбоксов в events.py, обновление create_event + тестов; (2) frontend-агент со
+    скилом `design-taste-frontend` — полный редизайн всех шаблонов+CSS, дружелюбные
+    «чипы вставки переменных» вместо сырых `{name}/{numbers}`, секция тумблеров,
+    индикатор «Сохранение…» на submit (лечит ощущение «вечной загрузки»). Деплой +
+    `alembic upgrade head` + pytest делает оркестратор после обоих агентов.
+- **2026-06-26. Google Sheets ПОЛНОСТЬЮ ВЫПИЛЕН — публичная таблица теперь на своём
+  сервере (HTML-страница).** Причина: сервис-аккаунт Google не может владеть файлами
+  в Drive (квота=0) → `client.create()` падал то `Drive API disabled`, то `storage
+  quota exceeded`. Решение по согласованию с заказчиком: «нахрен Google», список
+  отдаёт сам сервер. Сделано:
+  - **Публичная страница `GET /p/{event_id}`** (без авторизации) — `app/admin/routes/public.py`
+    + шаблон `public_table.html` (standalone, свой CSS, **поиск по имени/номеру** на
+      JS — люди находят себя в списке). Данные берутся из Postgres на лету
+      (`app/core/services/public_table.py: collect_records` — только approved-номера,
+      сортировка по номеру). Источник истины — БД, синхронизировать нечего.
+  - **Ссылку на страницу бот шлёт участнику** после оплаты. Новая настройка
+    `PUBLIC_BASE_URL` в `.env` (на сервере = `http://185.228.72.118:8080`), хелпер
+    `public_table.public_table_url(event_id)`. Плейсхолдер `{sheet_url}` теперь =
+    эта ссылка (в `worker.py` и `handlers.py`).
+  - **Удалено:** пакет `app/sheets/` (sync.py, client.py), `tests/test_sheets.py`,
+    зависимости `gspread`/`google-auth` из requirements, секция «Google Sheets» и
+    кнопка «Проверить Google Sheets» в `/settings`, `KEY_SHEETS_OWNER_EMAIL`, все
+    вызовы Sheets в `events.py` (create/delete листа), `moderation.py` (rebuild при
+    revoke — страница живая), синк в `worker.py` (`process_pending` больше БЕЗ
+    `sync_sheet`). Колонка `Event.sheet_id` оставлена в модели (всегда None, без
+    миграции). В `events_list.html` колонка «Google-лист» → «Список» со ссылкой `/p/{id}`.
+  - **Тесты переписаны** под отсутствие Google (worker/admin_events/admin_moderation/
+    settings) + новый `tests/test_public.py`. На сервере: **115 passed**. Живой smoke
+    на боевой БД: создал временное мероприятие+участника+3 номера → `/p/{id}`=200, имя/
+    счётчик/поиск на странице, после удаления =404. Мусор убран, БД пустая.
+  - Деплой: файлы залиты по SFTP в `/opt` и `/root`, `PUBLIC_BASE_URL` дописан в
+    `/opt/.env`, сервисы перезапущены (оба active). google-libs на сервере остались
+    установленными (не удаляются из venv автоматически) — безвредно, не импортируются.
+  - **NB:** локальные правки НЕ закоммичены в GitHub (коммитит пользователь). На
+    сервере файлы лежат впереди origin — при следующем `git pull` сделать
+    `git reset --hard origin/main` ПОСЛЕ того как пользователь запушит эти изменения.
+  - Старые «грабли Sheets-владения/OAuth» ниже в этом файле — ИСТОРИЯ, более неактуальны.
 - **2026-06-26. Авто-подхват VK-токена без рестарта + грабли Google API.**
   1. **`app/bot/main.py` переписан как СУПЕРВИЗОР.** Раньше токен читался один раз
      при старте → смена в админке требовала `systemctl restart vk-bot`. Теперь
@@ -13,10 +86,11 @@
      смена токена в `/settings` подхватывается за ~10 сек, рестарт НЕ нужен.
      Сообщение в `admin/routes/settings.py` и подсказку в `settings.html` обновил.
      Проверено на сервере: логи `Bot supervisor started ... → Starting BotPolling →
-     Worker started`, оба сервиса active, :8080/login=200. Файлы доставлены напрямую
-     по SFTP в `/opt` и `/root` (локальная папка — НЕ git, пушит на GitHub
-     пользователь; эти 3 файла теперь лежат на сервере ВПЕРЁД origin — при следующем
-     `git pull` сделать `git restore` этих файлов перед ff, как с requirements.txt).
+     Worker started`, оба сервиса active, :8080/login=200. Пользователь запушил правки
+     в GitHub (коммит `5f10cbb`); на сервере `/opt` и `/root` приведены к origin/main
+     через `git reset --hard origin/main` (рабочее дерево == origin, локальных
+     расхождений НЕТ; .env/.venv/secrets — untracked, не тронуты). pip — no-op,
+     alembic на head. Сервисы перезапущены и проверены.
   2. **Грабли Google: `APIError [403] Google Drive API has not been used in project
      ... or it is disabled`.** В GCP-проекте нового service-account (`vkautobot`,
      `first-720@...`) НЕ включены Drive/Sheets API. gspread требует ОБА. Лечится в
@@ -161,6 +235,22 @@
   реальные банки-чеки заказчика; UI-полировка админки.
 
 ## Нюансы (грабли, лимиты, особенности — пополняется по ходу)
+
+- **VK Error 15 (subcode 1133) на `photos.getMessagesUploadServer` = у токена
+  сообщества нет права «Фотографии».** Лечится пересозданием ключа сообщества в ВК
+  с галкой «Фотографии» (не код). В коде — загрузка QR теперь best-effort
+  (`handlers.py:_handle_keyword`, try/except): инструкция шлётся даже без QR. ЛЮБУЮ
+  отправку с attachment держать устойчивой — иначе падает весь обработчик и бот
+  «молчит».
+- **Боевой сервер:** root@185.228.72.118, проект `/opt/vk_auto_bot` (рантайм, owner
+  vkbot) + `/root/vk_auto_bot` (git-checkout). Коннект с Windows — paramiko
+  (`scripts/_ssh_run.py`, пароль в env `SSH_PASS`, в код/STATE НЕ писать). PG —
+  `sudo -u postgres psql -d vk_auto_bot`. Сервисы systemd: vk-bot, admin-web.
+  Деплой файлов — SFTP в /opt + `chown vkbot:vkbot` + `systemctl restart`. Helper
+  `_ssh_run.py` временный — удалить по завершении Фазы 4.
+- **ФОРМА `datetime-local` = наивное локальное время (МСК).** Хранить как UTC-aware
+  (`timeutil.parse_local_datetime`), показывать обратно фильтром `localdt`. Иначе
+  `is_event_open` (сравнивает с UTC now) глушит бота на разницу часовых поясов.
 
 - Статичный QR один на всех → автосверку платежа с конкретным человеком через банк
   делать НЕ будем; проверка = OCR суммы/реквизитов + ручная модерация.

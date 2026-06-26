@@ -27,6 +27,11 @@ async def create_event(
     msg_receipt_received: str | None = None,
     msg_need_contacts: str | None = None,
     is_active: bool = True,
+    send_instruction: bool = True,
+    send_qr: bool = True,
+    send_receipt_received: bool = True,
+    send_after_payment: bool = True,
+    send_need_contacts: bool = True,
 ) -> Event:
     keyword = keyword.strip().lower()
 
@@ -48,6 +53,11 @@ async def create_event(
         auto_confirm=auto_confirm,
         expected_recipient=expected_recipient,
         sheet_id=None,
+        send_instruction=send_instruction,
+        send_qr=send_qr,
+        send_receipt_received=send_receipt_received,
+        send_after_payment=send_after_payment,
+        send_need_contacts=send_need_contacts,
     )
     session.add(event)
     await session.flush()

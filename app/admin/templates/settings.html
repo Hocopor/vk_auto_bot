@@ -1,40 +1,46 @@
 {% extends "base.html" %}
 {% block title %}Настройки — Админка{% endblock %}
 {% block content %}
-<h1>Настройки интеграций</h1>
+<div class="page-head">
+    <div>
+        <h1>Настройки</h1>
+        <p class="lead">Подключение ВКонтакте: токен сообщества и проверка связи.</p>
+    </div>
+</div>
 
 {% if message %}
 <div class="banner {{ 'banner-ok' if ok else 'banner-err' }}">{{ message }}</div>
 {% endif %}
 
-<form method="post" action="/settings" class="form">
-  <h2>ВКонтакте</h2>
-  <label>VK-токен сообщества
-    <input type="password" name="vk_token" autocomplete="new-password"
-           placeholder="{{ 'задан — оставьте пустым, чтобы не менять' if vk_token_set else 'не задан' }}">
-  </label>
-  <label>VK group id
-    <input type="text" name="vk_group_id" value="{{ vk_group_id }}">
-  </label>
+<div class="card card-pad">
+    <h2>ВКонтакте</h2>
+    <p class="card-sub">Токен сообщества нужен боту, чтобы отвечать участникам. Смена токена подхватывается автоматически (~10 секунд), перезапуск не нужен.</p>
 
-  <h2>Google Sheets</h2>
-  <label>Почта владельца таблиц (Google-аккаунт заказчика)
-    <input type="email" name="sheets_owner_email" value="{{ sheets_owner_email }}"
-           placeholder="например, client@gmail.com">
-  </label>
-  <p class="hint">Новые таблицы будут автоматически расшарены на эту почту с правом редактирования.</p>
-
-  <button type="submit">Сохранить</button>
-  <p class="hint">Смена VK-токена подхватывается ботом автоматически (~10 сек), перезапускать вручную не нужно.</p>
-</form>
-
-<div class="form">
-  <h2>Проверка подключений</h2>
-  <form method="post" action="/settings/test-vk" style="display:inline">
-    <button type="submit">Проверить VK</button>
-  </form>
-  <form method="post" action="/settings/test-sheets" style="display:inline">
-    <button type="submit">Проверить Google Sheets</button>
-  </form>
+    <form method="post" action="/settings" data-loading-text="Сохранение…">
+        <div class="field">
+            <label for="f-token">Токен сообщества</label>
+            <input type="password" id="f-token" name="vk_token" autocomplete="new-password"
+                   placeholder="{{ 'задан — оставьте пустым, чтобы не менять' if vk_token_set else 'не задан' }}">
+            <p class="field-hint">Оставьте поле пустым, чтобы не менять текущий токен.</p>
+        </div>
+        <div class="field">
+            <label for="f-group">ID сообщества (group id)</label>
+            <input type="text" id="f-group" name="vk_group_id" value="{{ vk_group_id }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+    </form>
 </div>
+
+<div class="card card-pad">
+    <h2>Проверка подключения</h2>
+    <p class="card-sub">Проверьте, что бот может связаться с ВКонтакте по текущим настройкам.</p>
+    <form method="post" action="/settings/test-vk" data-loading-text="Проверяем…">
+        <button type="submit" class="btn btn-secondary">Проверить ВКонтакте</button>
+    </form>
+</div>
+
+<p class="field-hint" style="margin-top:18px">
+    Список участников публикуется на самом сервере: у каждого мероприятия есть страница-список
+    (ссылку бот шлёт участникам), отдельная таблица не нужна.
+</p>
 {% endblock %}

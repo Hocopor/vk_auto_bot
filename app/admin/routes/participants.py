@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, Request
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin.deps import get_session, require_login
+from app.admin.templating import templates
 from app.core.models import Event, Participant, PosterNumber
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/admin/templates")
 
 
 @router.get("/participants")

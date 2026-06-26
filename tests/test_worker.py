@@ -22,17 +22,13 @@ async def session():
 
 
 def make_callbacks():
-    """Возвращает (send, sync, sent, synced) — моки-колбэки + аккумуляторы вызовов."""
+    """Возвращает (send, sent) — мок-колбэк отправки + аккумулятор вызовов."""
     sent: list[tuple[int, str]] = []
-    synced: list[tuple] = []
 
     async def send_message(vk_user_id, text):
         sent.append((vk_user_id, text))
 
-    async def sync_sheet(event, records):
-        synced.append((event, records))
-
-    return send_message, sync_sheet, sent, synced
+    return send_message, sent
 
 
 async def setup_purchase(
@@ -46,6 +42,8 @@ async def setup_purchase(
     number_min=1,
     number_max=10,
     amount=Decimal("1000"),
+    send_after_payment=True,
+    send_need_contacts=True,
 ):
     event = Event(
         name="Розыгрыш",
@@ -58,6 +56,8 @@ async def setup_purchase(
         msg_after_payment="Номера: {numbers} ({count})",
         msg_need_contacts="Пришлите контакты",
         auto_confirm=False,
+        send_after_payment=send_after_payment,
+        send_need_contacts=send_need_contacts,
     )
     session.add(event)
     await session.flush()
@@ -84,9 +84,9 @@ async def setup_purchase(
 
 async def test_assigns_and_sends(session):
     event, participant, purchase = await setup_purchase(session, posters_count=4)
-    send, sync, sent, synced = make_callbacks()
+    send, sent = make_callbacks()
 
-    processed = await process_pending(session, send_message=send, sync_sheet=sync)
+    processed = await process_pending(session, send_message=send)
 
     assert processed == 1
     await session.refresh(purchase)
@@ -101,16 +101,13 @@ async def test_assigns_and_sends(session):
     assert all(1 <= n <= 10 for n in nums)
     # сообщение с номерами отправлено
     assert any(str(sorted(nums)[0]) in text for _, text in sent)
-    # зеркало синкнуто с 4 записями
-    assert len(synced) == 1
-    assert len(synced[0][1]) == 4
 
 
 async def test_need_contacts_sent_when_missing(session):
     await setup_purchase(session, provided_name=None, phone=None)
-    send, sync, sent, synced = make_callbacks()
+    send, sent = make_callbacks()
 
-    await process_pending(session, send_message=send, sync_sheet=sync)
+    await process_pending(session, send_message=send)
 
     assert any("контакты" in text.lower() for _, text in sent)
     assert len(sent) == 2  # after_payment + need_contacts
@@ -118,9 +115,9 @@ async def test_need_contacts_sent_when_missing(session):
 
 async def test_need_contacts_not_sent_when_present(session):
     await setup_purchase(session, provided_name="Иван", phone="+79001234567")
-    send, sync, sent, synced = make_callbacks()
+    send, sent = make_callbacks()
 
-    await process_pending(session, send_message=send, sync_sheet=sync)
+    await process_pending(session, send_message=send)
 
     assert len(sent) == 1  # только after_payment
     assert not any("контакты" in text.lower() for _, text in sent)
@@ -128,20 +125,19 @@ async def test_need_contacts_not_sent_when_present(session):
 
 async def test_skips_already_assigned(session):
     await setup_purchase(session, numbers_assigned=True)
-    send, sync, sent, synced = make_callbacks()
+    send, sent = make_callbacks()
 
-    processed = await process_pending(session, send_message=send, sync_sheet=sync)
+    processed = await process_pending(session, send_message=send)
 
     assert processed == 0
     assert sent == []
-    assert synced == []
 
 
 async def test_non_approved_ignored(session):
     await setup_purchase(session, status=PurchaseStatus.manual_review)
-    send, sync, sent, synced = make_callbacks()
+    send, sent = make_callbacks()
 
-    processed = await process_pending(session, send_message=send, sync_sheet=sync)
+    processed = await process_pending(session, send_message=send)
 
     assert processed == 0
     assert sent == []
@@ -151,9 +147,9 @@ async def test_numbers_exhausted_does_not_crash(session):
     event, participant, purchase = await setup_purchase(
         session, number_min=1, number_max=2, posters_count=5
     )
-    send, sync, sent, synced = make_callbacks()
+    send, sent = make_callbacks()
 
-    processed = await process_pending(session, send_message=send, sync_sheet=sync)
+    processed = await process_pending(session, send_message=send)
 
     assert processed == 0
     await session.refresh(purchase)
@@ -169,28 +165,50 @@ async def test_numbers_exhausted_does_not_crash(session):
 
 async def test_send_failure_does_not_block(session):
     event, participant, purchase = await setup_purchase(session, posters_count=2)
-    synced = []
 
     async def failing_send(vk_user_id, text):
         raise RuntimeError("VK API down")
 
-    async def sync_sheet(event, records):
-        synced.append((event, records))
-
-    processed = await process_pending(
-        session, send_message=failing_send, sync_sheet=sync_sheet
-    )
+    processed = await process_pending(session, send_message=failing_send)
 
     assert processed == 1
     await session.refresh(purchase)
     assert purchase.numbers_assigned is True  # номера присвоены несмотря на сбой отправки
 
 
+async def test_send_after_payment_disabled_still_assigns_numbers(session):
+    event, participant, purchase = await setup_purchase(
+        session, posters_count=3, send_after_payment=False
+    )
+    send, sent = make_callbacks()
+
+    processed = await process_pending(session, send_message=send)
+
+    assert processed == 1
+    await session.refresh(purchase)
+    assert purchase.numbers_assigned is True
+    # after_payment отключён -> ничего не отправлено (need_contacts не нужен, контакты есть)
+    assert sent == []
+
+
+async def test_send_need_contacts_disabled(session):
+    await setup_purchase(
+        session, provided_name=None, phone=None, send_need_contacts=False
+    )
+    send, sent = make_callbacks()
+
+    await process_pending(session, send_message=send)
+
+    # after_payment отправлен, need_contacts — отключён тумблером
+    assert len(sent) == 1
+    assert not any("контакты" in text.lower() for _, text in sent)
+
+
 async def test_idempotent_second_run(session):
     event, participant, purchase = await setup_purchase(session, posters_count=3)
-    send, sync, sent, synced = make_callbacks()
+    send, sent = make_callbacks()
 
-    first = await process_pending(session, send_message=send, sync_sheet=sync)
+    first = await process_pending(session, send_message=send)
     count_after_first = len(
         (
             await session.execute(
@@ -198,7 +216,7 @@ async def test_idempotent_second_run(session):
             )
         ).scalars().all()
     )
-    second = await process_pending(session, send_message=send, sync_sheet=sync)
+    second = await process_pending(session, send_message=send)
     count_after_second = len(
         (
             await session.execute(

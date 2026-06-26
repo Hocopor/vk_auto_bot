@@ -99,13 +99,13 @@ async def client(maker):
 async def test_settings_page_get(client):
     resp = await client.get("/settings")
     assert resp.status_code == 200
-    assert "Настройки интеграций" in resp.text
+    assert "Настройки" in resp.text
 
 
 async def test_settings_save(client, maker):
     resp = await client.post(
         "/settings",
-        data={"vk_token": "tok123", "vk_group_id": "789", "sheets_owner_email": "a@b.com"},
+        data={"vk_token": "tok123", "vk_group_id": "789"},
         follow_redirects=False,
     )
     assert resp.status_code == 200
@@ -113,19 +113,18 @@ async def test_settings_save(client, maker):
 
     async with maker() as sess:
         assert await s.get_setting(sess, s.KEY_VK_GROUP_ID) == "789"
-        assert await s.get_setting(sess, s.KEY_SHEETS_OWNER_EMAIL) == "a@b.com"
         assert await s.get_setting(sess, s.KEY_VK_TOKEN) == "tok123"
 
 
 async def test_settings_token_not_overwritten_when_empty(client, maker):
     await client.post(
         "/settings",
-        data={"vk_token": "tok123", "vk_group_id": "1", "sheets_owner_email": ""},
+        data={"vk_token": "tok123", "vk_group_id": "1"},
         follow_redirects=False,
     )
     await client.post(
         "/settings",
-        data={"vk_token": "", "vk_group_id": "2", "sheets_owner_email": ""},
+        data={"vk_token": "", "vk_group_id": "2"},
         follow_redirects=False,
     )
     async with maker() as sess:
@@ -136,7 +135,7 @@ async def test_settings_token_not_overwritten_when_empty(client, maker):
 async def test_settings_token_masked_in_html(client):
     await client.post(
         "/settings",
-        data={"vk_token": "tok123", "vk_group_id": "", "sheets_owner_email": ""},
+        data={"vk_token": "tok123", "vk_group_id": ""},
         follow_redirects=False,
     )
     resp = await client.get("/settings")
@@ -152,16 +151,6 @@ async def test_test_vk_endpoint(client, monkeypatch):
     resp = await client.post("/settings/test-vk", follow_redirects=False)
     assert resp.status_code == 200
     assert "VK OK MSG" in resp.text
-
-
-async def test_test_sheets_endpoint(client, monkeypatch):
-    async def fake_test_connection(owner_email=None):
-        return False, "SHEETS ERR MSG"
-
-    monkeypatch.setattr(settings_routes.sheets_sync, "test_connection", fake_test_connection)
-    resp = await client.post("/settings/test-sheets", follow_redirects=False)
-    assert resp.status_code == 200
-    assert "SHEETS ERR MSG" in resp.text
 
 
 class _FakeResp:

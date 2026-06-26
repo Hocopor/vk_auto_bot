@@ -3,18 +3,16 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.admin.deps import get_session, require_login
+from app.admin.templating import templates
 from app.core.models import Participant, PosterNumber, Purchase, PurchaseStatus
 from app.core.services.purchases import approve, reject, revoke, set_amount
-from app.sheets import sync as sheets_sync
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/admin/templates")
 
 
 def _is_partial(purchase) -> bool:
@@ -186,10 +184,8 @@ async def moderation_revoke(
         raise HTTPException(status_code=404, detail="Покупка не найдена")
     await revoke(session, purchase, moderated_by=user)
     await session.commit()
-    try:
-        await sheets_sync.rebuild_event_sheet(session, purchase.event_id)
-    except Exception:
-        pass
+    # Публичная таблица читается из БД на лету — отзыв номеров отражается сразу,
+    # ничего пересобирать не нужно.
     return RedirectResponse(url=f"/moderation/{purchase_id}", status_code=303)
 
 

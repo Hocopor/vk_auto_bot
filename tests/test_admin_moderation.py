@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.admin.deps import get_session, require_login
 from app.admin.main import app
-from app.admin.routes import moderation as moderation_routes
 from app.core import models  # noqa: F401
 from app.core.db import Base
 from app.core.models import Participant, PosterNumber, Purchase, PurchaseStatus
@@ -29,24 +28,13 @@ def maker(engine):
 
 
 @pytest.fixture
-def sheet_calls():
-    return {"rebuilt": []}
-
-
-@pytest.fixture
-async def client(maker, sheet_calls, monkeypatch):
+async def client(maker):
     async def _get_session_override():
         async with maker() as session:
             yield session
 
     async def _require_login_override():
         return "admin"
-
-    async def fake_rebuild(session, event_id):
-        sheet_calls["rebuilt"].append(event_id)
-        return True
-
-    monkeypatch.setattr(moderation_routes.sheets_sync, "rebuild_event_sheet", fake_rebuild)
 
     app.dependency_overrides[get_session] = _get_session_override
     app.dependency_overrides[require_login] = _require_login_override
@@ -145,7 +133,7 @@ async def test_reject(client, maker):
         assert purchase.moderated_by == "admin"
 
 
-async def test_revoke_frees_numbers(client, maker, sheet_calls):
+async def test_revoke_frees_numbers(client, maker):
     event_id = await make_event(maker)
     participant_id = await make_participant(maker, event_id)
     purchase_id = await make_purchase(
@@ -176,8 +164,6 @@ async def test_revoke_frees_numbers(client, maker, sheet_calls):
         purchase = await session.get(Purchase, purchase_id)
         assert purchase.status == PurchaseStatus.revoked
         assert purchase.numbers_assigned is False
-
-    assert event_id in sheet_calls["rebuilt"]
 
 
 async def test_set_amount_recalculates(client, maker):

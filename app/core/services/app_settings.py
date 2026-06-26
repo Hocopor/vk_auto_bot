@@ -5,7 +5,6 @@ from app.core.models import AppSetting
 
 KEY_VK_TOKEN = "vk_token"
 KEY_VK_GROUP_ID = "vk_group_id"
-KEY_SHEETS_OWNER_EMAIL = "sheets_owner_email"
 
 SECRET_KEYS = {KEY_VK_TOKEN}
 

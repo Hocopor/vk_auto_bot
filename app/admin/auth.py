@@ -2,9 +2,9 @@ import logging
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
 from passlib.context import CryptContext
 
+from app.admin.templating import templates
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/admin/templates")
 
 
 def verify_credentials(login: str, password: str) -> bool:

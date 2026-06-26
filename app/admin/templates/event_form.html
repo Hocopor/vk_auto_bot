@@ -3,115 +3,264 @@
 {% block title %}{% if mode == "create" %}Создать мероприятие{% else %}Редактировать мероприятие{% endif %} — Админка розыгрышей{% endblock %}
 
 {% block content %}
-<h1>{% if mode == "create" %}Создать мероприятие{% else %}Редактировать мероприятие{% endif %}</h1>
+
+{# Подписи токенов: человеку понятно, что вставится в текст #}
+{% set token_labels = {
+    "name": "Имя участника",
+    "numbers": "Номера билетов",
+    "count": "Сколько билетов",
+    "price": "Цена билета",
+    "sheet_url": "Ссылка на список участников",
+    "event_name": "Название розыгрыша"
+} %}
+
+{# Макрос: ряд чипов-вставок над конкретной textarea #}
+{% macro var_chips(target, tokens) %}
+<p class="var-chips-label">Нажмите, чтобы вставить в текст:</p>
+<div class="var-chips">
+    {% for t in tokens %}
+    <button type="button" class="var-chip" data-target="{{ target }}" data-insert="{{ '{' ~ t ~ '}' }}">
+        <span class="plus">+</span>{{ token_labels[t] }}
+    </button>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+<a href="/events" class="back-link">← Все мероприятия</a>
+
+<div class="page-head">
+    <div>
+        <h1>{% if mode == "create" %}Новое мероприятие{% else %}Редактирование мероприятия{% endif %}</h1>
+        <p class="lead">Бот будет вести розыгрыш по этим настройкам: реагировать на кодовое слово, принимать чеки и выдавать номера.</p>
+    </div>
+</div>
 
 {% if error %}
-<p class="error">{{ error }}</p>
+<p class="error-message">{{ error }}</p>
 {% endif %}
 
 <form method="post"
       action="{% if mode == 'create' %}/events{% else %}/events/{{ event.id }}{% endif %}"
-      enctype="multipart/form-data">
+      enctype="multipart/form-data"
+      data-loading-text="Сохранение…">
 
-    <p>
-        <label>Название мероприятия<br>
-        <input type="text" name="name" value="{{ event.name if event else '' }}" required>
-        </label>
-    </p>
+    <!-- ───────── Основное ───────── -->
+    <div class="card card-pad">
+        <div class="form-section">
+            <div class="form-section-head">
+                <h2>Основное</h2>
+                <p>Название видно вам и в текстах для участников. Кодовое слово запускает бота.</p>
+            </div>
 
-    <p>
-        <label>Кодовое слово (бот реагирует на него в сообщении)<br>
-        <input type="text" name="keyword" value="{{ event.keyword if event else '' }}" required>
-        </label>
-    </p>
+            <div class="field">
+                <label for="f-name">Название мероприятия</label>
+                <input type="text" id="f-name" name="name" value="{{ event.name if event else '' }}" required>
+            </div>
 
-    <p>
-        <label>Цена за билет (₽)<br>
-        <input type="text" name="price" value="{{ event.price if event else '' }}" required>
-        </label>
-    </p>
+            <div class="field">
+                <label for="f-keyword">Кодовое слово</label>
+                <input type="text" id="f-keyword" name="keyword" value="{{ event.keyword if event else '' }}" required>
+                <p class="field-hint">Бот отвечает инструкцией, когда участник пишет это слово в сообщении.</p>
+            </div>
+        </div>
+    </div>
 
-    <p>
-        <label>Номер от<br>
-        <input type="number" name="number_min" value="{{ event.number_min if event else 1 }}" required>
-        </label>
-    </p>
+    <!-- ───────── Билеты и номера ───────── -->
+    <div class="card card-pad">
+        <div class="form-section">
+            <div class="form-section-head">
+                <h2>Билеты и номера</h2>
+                <p>Цена одного билета и диапазон номеров, которые бот раздаёт участникам.</p>
+            </div>
 
-    <p>
-        <label>Номер до<br>
-        <input type="number" name="number_max" value="{{ event.number_max if event else '' }}" required>
-        </label>
-    </p>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="f-price">Цена за билет, ₽</label>
+                    <input type="text" id="f-price" name="price" value="{{ event.price if event else '' }}" required>
+                </div>
+                <div class="field">
+                    <label for="f-winners">Количество победителей</label>
+                    <input type="number" id="f-winners" name="winners_count" value="{{ event.winners_count if event else 1 }}">
+                </div>
+                <div class="field">
+                    <label for="f-min">Номер от</label>
+                    <input type="number" id="f-min" name="number_min" value="{{ event.number_min if event else 1 }}" required>
+                </div>
+                <div class="field">
+                    <label for="f-max">Номер до</label>
+                    <input type="number" id="f-max" name="number_max" value="{{ event.number_max if event else '' }}" required>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <p>
-        <label>Количество победителей<br>
-        <input type="number" name="winners_count" value="{{ event.winners_count if event else 1 }}">
-        </label>
-    </p>
+    <!-- ───────── Сроки ───────── -->
+    <div class="card card-pad">
+        <div class="form-section">
+            <div class="form-section-head">
+                <h2>Сроки проведения</h2>
+                <p>Необязательно. Время указывается по Москве (МСК).</p>
+            </div>
 
-    <p>
-        <label>Начало (необязательно)<br>
-        <input type="datetime-local" name="starts_at" value="{{ event.starts_at.strftime('%Y-%m-%dT%H:%M') if event and event.starts_at else '' }}">
-        </label>
-    </p>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="f-starts">Начало</label>
+                    <input type="datetime-local" id="f-starts" name="starts_at" value="{{ event.starts_at | localdt }}">
+                    <p class="field-hint">Московское время. Оставьте пустым — бот работает сразу.</p>
+                </div>
+                <div class="field">
+                    <label for="f-ends">Окончание</label>
+                    <input type="datetime-local" id="f-ends" name="ends_at" value="{{ event.ends_at | localdt }}">
+                    <p class="field-hint">Московское время. Оставьте пустым — бот работает без ограничения.</p>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <p>
-        <label>Окончание (необязательно)<br>
-        <input type="datetime-local" name="ends_at" value="{{ event.ends_at.strftime('%Y-%m-%dT%H:%M') if event and event.ends_at else '' }}">
-        </label>
-    </p>
+    <!-- ───────── Оплата и проверка ───────── -->
+    <div class="card card-pad">
+        <div class="form-section">
+            <div class="form-section-head">
+                <h2>Оплата и проверка чеков</h2>
+                <p>QR-код для оплаты и правила проверки присланных чеков.</p>
+            </div>
 
-    <p>
-        <label>Получатель платежа (для проверки ФИО в чеке, необязательно)<br>
-        <input type="text" name="expected_recipient" value="{{ event.expected_recipient if event and event.expected_recipient else '' }}">
-        </label>
-    </p>
+            <div class="field">
+                <span class="field-label">QR-код для оплаты</span>
+                {% if event and event.qr_image_path %}
+                <p class="field-hint"><span class="badge badge-green"><span class="dot"></span>QR-код загружен</span> — выберите новый файл, только если хотите заменить.</p>
+                {% endif %}
+                <input type="file" name="qr_file" accept="image/*">
+            </div>
 
-    <p>
-        <label>
-        <input type="checkbox" name="auto_confirm" {% if event and event.auto_confirm %}checked{% endif %}>
-        Автоматически подтверждать оплату по результатам OCR (без ручной модерации)
-        </label>
-    </p>
+            <div class="field">
+                <label for="f-recipient">Получатель платежа (для проверки чека)</label>
+                <input type="text" id="f-recipient" name="expected_recipient" value="{{ event.expected_recipient if event and event.expected_recipient else '' }}">
+                <p class="field-hint">Необязательно. Бот сверит ФИО получателя в чеке с этим значением.</p>
+            </div>
 
-    <p>
-        <strong>QR-код для оплаты</strong><br>
-        {% if event and event.qr_image_path %}
-        <em>Текущий QR загружен.</em><br>
-        {% endif %}
-        <input type="file" name="qr_file" accept="image/*">
-    </p>
+            <div class="field">
+                <label class="check-inline">
+                    <input type="checkbox" name="auto_confirm" {% if event and event.auto_confirm %}checked{% endif %}>
+                    <span>
+                        <strong>Подтверждать оплату автоматически</strong>
+                        <span class="field-hint" style="display:block">По результатам распознавания чека, без ручной проверки в разделе «Модерация».</span>
+                    </span>
+                </label>
+            </div>
+        </div>
+    </div>
 
-    <p class="hint">
-        Доступные плейсхолдеры в текстах: {name}, {numbers}, {count}, {price}, {sheet_url}, {event_name}
-    </p>
+    <!-- ───────── Какие сообщения отправлять ───────── -->
+    <div class="card card-pad">
+        <div class="form-section">
+            <div class="form-section-head">
+                <h2>Какие сообщения отправлять участникам</h2>
+                <p>Включайте или выключайте отдельные сообщения бота. Для нового мероприятия включено всё.</p>
+            </div>
 
-    <p>
-        <label>Текст инструкции (после кодового слова)<br>
-        <textarea name="msg_instruction" rows="4" cols="60">{{ event.msg_instruction if event and event.msg_instruction else defaults.msg_instruction }}</textarea>
-        </label>
-    </p>
+            <div class="toggle-row">
+                <label class="switch">
+                    <input type="checkbox" name="send_instruction" {% if mode == 'create' or (event and event.send_instruction) %}checked{% endif %}>
+                    <span class="track"></span>
+                </label>
+                <div class="toggle-text">
+                    <span class="toggle-label">Отправлять сообщение-инструкцию в ответ на кодовое слово</span>
+                    <p class="toggle-hint">Как только участник напишет кодовое слово, бот пришлёт инструкцию по оплате.</p>
+                </div>
+            </div>
 
-    <p>
-        <label>Текст после подтверждения оплаты<br>
-        <textarea name="msg_after_payment" rows="4" cols="60">{{ event.msg_after_payment if event and event.msg_after_payment else defaults.msg_after_payment }}</textarea>
-        </label>
-    </p>
+            <div class="toggle-row">
+                <label class="switch">
+                    <input type="checkbox" name="send_qr" {% if mode == 'create' or (event and event.send_qr) %}checked{% endif %}>
+                    <span class="track"></span>
+                </label>
+                <div class="toggle-text">
+                    <span class="toggle-label">Прикреплять QR-код для оплаты к инструкции</span>
+                    <p class="toggle-hint">К сообщению-инструкции добавится картинка с QR-кодом для перевода.</p>
+                </div>
+            </div>
 
-    <p>
-        <label>Текст после получения чека<br>
-        <textarea name="msg_receipt_received" rows="4" cols="60">{{ event.msg_receipt_received if event and event.msg_receipt_received else defaults.msg_receipt_received }}</textarea>
-        </label>
-    </p>
+            <div class="toggle-row">
+                <label class="switch">
+                    <input type="checkbox" name="send_receipt_received" {% if mode == 'create' or (event and event.send_receipt_received) %}checked{% endif %}>
+                    <span class="track"></span>
+                </label>
+                <div class="toggle-text">
+                    <span class="toggle-label">Подтверждать участнику, что чек получен</span>
+                    <p class="toggle-hint">После присланного чека бот ответит, что чек принят и проверяется.</p>
+                </div>
+            </div>
 
-    <p>
-        <label>Текст запроса контактов (имя/телефон)<br>
-        <textarea name="msg_need_contacts" rows="4" cols="60">{{ event.msg_need_contacts if event and event.msg_need_contacts else defaults.msg_need_contacts }}</textarea>
-        </label>
-    </p>
+            <div class="toggle-row">
+                <label class="switch">
+                    <input type="checkbox" name="send_after_payment" {% if mode == 'create' or (event and event.send_after_payment) %}checked{% endif %}>
+                    <span class="track"></span>
+                </label>
+                <div class="toggle-text">
+                    <span class="toggle-label">Сообщать участнику его номера после подтверждения оплаты</span>
+                    <p class="toggle-hint">Когда оплата подтверждена, бот пришлёт участнику его номера билетов.</p>
+                </div>
+            </div>
 
-    <p>
-        <button type="submit">Сохранить</button>
-    </p>
+            <div class="toggle-row">
+                <label class="switch">
+                    <input type="checkbox" name="send_need_contacts" {% if mode == 'create' or (event and event.send_need_contacts) %}checked{% endif %}>
+                    <span class="track"></span>
+                </label>
+                <div class="toggle-text">
+                    <span class="toggle-label">Просить имя и телефон, если участник их не прислал</span>
+                    <p class="toggle-hint">Если в сообщении нет имени или телефона, бот вежливо попросит их прислать.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ───────── Тексты сообщений ───────── -->
+    <div class="card card-pad">
+        <div class="form-section">
+            <div class="form-section-head">
+                <h2>Тексты сообщений</h2>
+                <p>Это то, что увидит участник. Жёлтые кнопки вставляют в текст данные, которые бот подставит автоматически (имя, номера, цена и т.д.).</p>
+            </div>
+
+            <!-- Инструкция -->
+            <div class="field">
+                <label for="ta-instruction">Сообщение-инструкция (ответ на кодовое слово)</label>
+                <p class="field-hint">Бот шлёт его сразу, когда участник написал кодовое слово.</p>
+                {{ var_chips("msg_instruction", ["event_name", "price", "sheet_url"]) }}
+                <textarea id="ta-instruction" name="msg_instruction" rows="4">{{ event.msg_instruction if event and event.msg_instruction else defaults.msg_instruction }}</textarea>
+            </div>
+
+            <!-- Чек получен -->
+            <div class="field">
+                <label for="ta-receipt">Подтверждение, что чек получен</label>
+                <p class="field-hint">Бот шлёт его сразу после того, как участник прислал чек.</p>
+                {{ var_chips("msg_receipt_received", ["event_name", "price", "sheet_url"]) }}
+                <textarea id="ta-receipt" name="msg_receipt_received" rows="4">{{ event.msg_receipt_received if event and event.msg_receipt_received else defaults.msg_receipt_received }}</textarea>
+            </div>
+
+            <!-- После оплаты (с номерами) -->
+            <div class="field">
+                <label for="ta-after">Сообщение с номерами (после подтверждения оплаты)</label>
+                <p class="field-hint">Бот шлёт его, когда оплата подтверждена и участнику присвоены номера.</p>
+                {{ var_chips("msg_after_payment", ["name", "numbers", "count", "price", "sheet_url", "event_name"]) }}
+                <textarea id="ta-after" name="msg_after_payment" rows="4">{{ event.msg_after_payment if event and event.msg_after_payment else defaults.msg_after_payment }}</textarea>
+            </div>
+
+            <!-- Просьба контактов -->
+            <div class="field">
+                <label for="ta-contacts">Просьба прислать имя и телефон</label>
+                <p class="field-hint">Бот шлёт его, если участник не указал имя или номер телефона.</p>
+                {{ var_chips("msg_need_contacts", ["name", "event_name"]) }}
+                <textarea id="ta-contacts" name="msg_need_contacts" rows="4">{{ event.msg_need_contacts if event and event.msg_need_contacts else defaults.msg_need_contacts }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="btn-row" style="margin-top:22px">
+        <button type="submit" class="btn btn-primary btn-lg">Сохранить мероприятие</button>
+        <a href="/events" class="btn btn-ghost">Отмена</a>
+    </div>
 </form>
 {% endblock %}

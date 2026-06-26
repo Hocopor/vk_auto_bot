@@ -8,24 +8,22 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.db import async_session_maker
-from app.core.models import Event, Purchase, PurchaseStatus
+from app.core.models import Purchase, PurchaseStatus
 from app.core.placeholders import format_numbers, render
+from app.core.services import public_table
 from app.core.services.numbers import NumbersExhausted, assign_unique, count_posters
-from app.sheets import sync as sheets_sync
 
 logger = logging.getLogger(__name__)
 
 SendMessage = Callable[[int, str], Awaitable[None]]
-SyncSheet = Callable[[Event, list[tuple[int, str | None]]], Awaitable[None]]
 
 
 async def process_pending(
     session: AsyncSession,
     *,
     send_message: SendMessage,
-    sync_sheet: SyncSheet,
 ) -> int:
-    """Найти оплаченные покупки без номеров, присвоить номера, уведомить и зеркалить в Sheets.
+    """Найти оплаченные покупки без номеров, присвоить номера и уведомить участника.
 
     Возвращает количество обработанных (numbers_assigned выставлен) покупок.
     """
@@ -76,24 +74,25 @@ async def process_pending(
             "numbers": format_numbers(numbers),
             "count": len(numbers),
             "price": event.price,
-            "sheet_url": (
-                f"https://docs.google.com/spreadsheets/d/{event.sheet_id}"
-                if event.sheet_id
-                else ""
-            ),
+            "sheet_url": public_table.public_table_url(event.id),
+            "event_name": event.name,
         }
 
-        text = render(event.msg_after_payment, ctx)
+        if event.send_after_payment:
+            text = render(event.msg_after_payment, ctx)
+            try:
+                await send_message(participant.vk_user_id, text)
+            except Exception:
+                logger.exception(
+                    "Failed to send after-payment message to vk_user_id=%s",
+                    participant.vk_user_id,
+                )
 
-        try:
-            await send_message(participant.vk_user_id, text)
-        except Exception:
-            logger.exception(
-                "Failed to send after-payment message to vk_user_id=%s",
-                participant.vk_user_id,
-            )
-
-        if (not participant.provided_name or not participant.phone) and event.msg_need_contacts:
+        if (
+            event.send_need_contacts
+            and (not participant.provided_name or not participant.phone)
+            and event.msg_need_contacts
+        ):
             try:
                 await send_message(
                     participant.vk_user_id, render(event.msg_need_contacts, ctx)
@@ -103,12 +102,6 @@ async def process_pending(
                     "Failed to send need-contacts message to vk_user_id=%s",
                     participant.vk_user_id,
                 )
-
-        records = [(n, participant.provided_name) for n in numbers]
-        try:
-            await sync_sheet(event, records)
-        except Exception:
-            logger.exception("Failed to sync sheet for event %s", event.id)
 
         processed += 1
 
@@ -120,17 +113,13 @@ def make_real_callbacks(bot):
     async def _send(vk_user_id: int, text: str) -> None:
         await bot.api.messages.send(peer_id=vk_user_id, message=text, random_id=0)
 
-    async def _sync(event, records) -> None:
-        if event.sheet_id:
-            await sheets_sync.add_rows(event.sheet_id, records)
-
-    return _send, _sync
+    return _send
 
 
 async def run_once(bot) -> int:
-    send, sync = make_real_callbacks(bot)
+    send = make_real_callbacks(bot)
     async with async_session_maker() as session:
-        return await process_pending(session, send_message=send, sync_sheet=sync)
+        return await process_pending(session, send_message=send)
 
 
 async def worker_loop(bot, stop_event: asyncio.Event | None = None) -> None:

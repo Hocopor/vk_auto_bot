@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ event.name }} — список участников</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f4f5f8; --surface: #fff; --surface-2: #f8f9fb;
+            --line: #e6e8ee; --line-strong: #d4d8e2;
+            --text: #1a1d23; --muted: #5c6470; --faint: #8a92a0;
+            --accent: #4f46e5; --accent-soft: #eef0fe;
+            --green: #15803d; --green-soft: #e7f6ec;
+            --hit: #fff5d6;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; padding: 18px 16px 36px;
+            font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg); color: var(--text);
+            -webkit-font-smoothing: antialiased;
+        }
+        .wrap { max-width: 720px; margin: 0 auto; }
+        .head { margin-bottom: 18px; }
+        h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 6px; }
+        .sub { color: var(--muted); margin: 0; font-size: 0.95rem; }
+        .count-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: var(--green-soft); color: var(--green);
+            font-weight: 700; font-size: 0.85rem;
+            padding: 4px 12px; border-radius: 999px; margin-top: 10px;
+        }
+        .count-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+        .search {
+            width: 100%; padding: 14px 16px; font-size: 1.05rem;
+            border: 1px solid var(--line-strong); border-radius: 12px;
+            margin: 14px 0; background: var(--surface);
+            font-family: inherit; color: var(--text);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .search::placeholder { color: var(--faint); }
+        .search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,0.22); }
+
+        .card {
+            background: var(--surface); border: 1px solid var(--line);
+            border-radius: 14px; overflow: hidden;
+            box-shadow: 0 1px 2px rgba(26,29,35,0.06);
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 13px 16px; text-align: left; border-bottom: 1px solid var(--line); }
+        th {
+            background: var(--surface-2); font-size: 0.74rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+            position: sticky; top: 0;
+        }
+        td:first-child, th:first-child { width: 88px; font-variant-numeric: tabular-nums; font-weight: 700; }
+        td:last-child, th:last-child { width: 96px; text-align: center; }
+        tr:last-child td { border-bottom: none; }
+        tbody tr.hit { background: var(--hit); }
+        tbody tr.hit td:first-child { color: var(--accent); }
+
+        .paid {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 26px; height: 26px; border-radius: 50%;
+            background: var(--green-soft); color: var(--green); font-weight: 800;
+        }
+
+        .empty, .noresult { padding: 36px 16px; text-align: center; color: var(--muted); }
+        .noresult { display: none; }
+        .empty strong { display: block; color: var(--text); font-size: 1.05rem; margin-bottom: 4px; }
+        .foot { color: var(--faint); font-size: 0.82rem; text-align: center; margin: 18px 0 0; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="head">
+        <h1>{{ event.name }}</h1>
+        <p class="sub">Список участников розыгрыша</p>
+        <span class="count-pill"><span class="dot"></span>Оплаченных номеров: <b id="count">{{ count }}</b></span>
+    </div>
+
+    {% if records %}
+    <input id="search" class="search" type="text" inputmode="search"
+           placeholder="Поиск по имени или номеру…" autocomplete="off">
+    <div class="card">
+        <table id="tbl">
+            <thead>
+                <tr><th>Номер</th><th>Имя</th><th>Оплачено</th></tr>
+            </thead>
+            <tbody>
+                {% for number, name in records %}
+                <tr data-search="{{ number }} {{ (name or '')|lower }}">
+                    <td>{{ number }}</td>
+                    <td>{{ name or "—" }}</td>
+                    <td><span class="paid">{{ paid_mark }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="noresult" id="noresult">Ничего не найдено</div>
+    </div>
+    {% else %}
+    <div class="card"><div class="empty"><strong>Пока нет оплаченных участников</strong>Здесь появятся номера, как только участники оплатят билеты.</div></div>
+    {% endif %}
+
+    <p class="foot">Список обновляется автоматически. Обновите страницу, чтобы увидеть свежие данные.</p>
+</div>
+
+<script>
+(function () {
+    var input = document.getElementById('search');
+    if (!input) return;
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#tbl tbody tr'));
+    var noresult = document.getElementById('noresult');
+    input.addEventListener('input', function () {
+        var q = input.value.trim().toLowerCase();
+        var shown = 0;
+        rows.forEach(function (tr) {
+            var hay = tr.getAttribute('data-search');
+            var match = q === '' || hay.indexOf(q) !== -1;
+            tr.style.display = match ? '' : 'none';
+            tr.classList.toggle('hit', q !== '' && match);
+            if (match) shown++;
+        });
+        noresult.style.display = (q !== '' && shown === 0) ? 'block' : 'none';
+    });
+})();
+</script>
+</body>
+</html>

@@ -1,36 +1,24 @@
 import logging
 import os
 import uuid
-from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin.deps import get_session, require_login
+from app.admin.templating import templates
+from app.core import timeutil
 from app.core.config import settings
 from app.core.defaults import DEFAULT_TEXTS
 from app.core.models import Event, Purchase
 from app.core.services.events import create_event, delete_event, set_active
-from app.core.services import app_settings as app_settings_service
-from app.sheets import sync as sheets_sync
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/admin/templates")
-
-
-def _parse_optional_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    value = value.strip()
-    if not value:
-        return None
-    return datetime.fromisoformat(value)
 
 
 def _parse_optional_str(value: str | None) -> str | None:
@@ -105,6 +93,11 @@ async def create_event_submit(
     msg_after_payment: str = Form(""),
     msg_receipt_received: str = Form(""),
     msg_need_contacts: str = Form(""),
+    send_instruction: str | None = Form(None),
+    send_qr: str | None = Form(None),
+    send_receipt_received: str | None = Form(None),
+    send_after_payment: str | None = Form(None),
+    send_need_contacts: str | None = Form(None),
     qr_file: UploadFile | None = None,
 ):
     form_values = {
@@ -122,6 +115,11 @@ async def create_event_submit(
         "msg_after_payment": msg_after_payment,
         "msg_receipt_received": msg_receipt_received,
         "msg_need_contacts": msg_need_contacts,
+        "send_instruction": bool(send_instruction),
+        "send_qr": bool(send_qr),
+        "send_receipt_received": bool(send_receipt_received),
+        "send_after_payment": bool(send_after_payment),
+        "send_need_contacts": bool(send_need_contacts),
     }
 
     try:
@@ -129,8 +127,8 @@ async def create_event_submit(
         number_min_val = int(number_min)
         number_max_val = int(number_max)
         winners_count_val = int(winners_count) if winners_count else 1
-        starts_at_val = _parse_optional_datetime(starts_at)
-        ends_at_val = _parse_optional_datetime(ends_at)
+        starts_at_val = timeutil.parse_local_datetime(starts_at)
+        ends_at_val = timeutil.parse_local_datetime(ends_at)
     except (InvalidOperation, ValueError):
         return templates.TemplateResponse(
             "event_form.html",
@@ -164,17 +162,15 @@ async def create_event_submit(
         msg_after_payment=_parse_optional_str(msg_after_payment),
         msg_receipt_received=_parse_optional_str(msg_receipt_received),
         msg_need_contacts=_parse_optional_str(msg_need_contacts),
+        send_instruction=bool(send_instruction),
+        send_qr=bool(send_qr),
+        send_receipt_received=bool(send_receipt_received),
+        send_after_payment=bool(send_after_payment),
+        send_need_contacts=bool(send_need_contacts),
     )
 
-    owner_email = await app_settings_service.get_setting(
-        session, app_settings_service.KEY_SHEETS_OWNER_EMAIL
-    )
-    sheet_id = await sheets_sync.create_sheet(f"{event.name} — участники", owner_email=owner_email)
-    if sheet_id:
-        event.sheet_id = sheet_id
-    else:
-        logger.warning("Не удалось создать Google-лист для мероприятия %s", event.id)
-
+    # Публичная таблица участников отдаётся самим сервером по /p/{event.id};
+    # внешние сервисы (Google) не используются — создавать ничего не нужно.
     await session.commit()
     return RedirectResponse(url="/events", status_code=303)
 
@@ -225,6 +221,11 @@ async def update_event_submit(
     msg_after_payment: str = Form(""),
     msg_receipt_received: str = Form(""),
     msg_need_contacts: str = Form(""),
+    send_instruction: str | None = Form(None),
+    send_qr: str | None = Form(None),
+    send_receipt_received: str | None = Form(None),
+    send_after_payment: str | None = Form(None),
+    send_need_contacts: str | None = Form(None),
     qr_file: UploadFile | None = None,
 ):
     from fastapi import HTTPException
@@ -238,8 +239,8 @@ async def update_event_submit(
         number_min_val = int(number_min)
         number_max_val = int(number_max)
         winners_count_val = int(winners_count) if winners_count else 1
-        starts_at_val = _parse_optional_datetime(starts_at)
-        ends_at_val = _parse_optional_datetime(ends_at)
+        starts_at_val = timeutil.parse_local_datetime(starts_at)
+        ends_at_val = timeutil.parse_local_datetime(ends_at)
     except (InvalidOperation, ValueError):
         form_values = {
             "id": event.id,
@@ -258,6 +259,11 @@ async def update_event_submit(
             "msg_receipt_received": msg_receipt_received,
             "msg_need_contacts": msg_need_contacts,
             "qr_image_path": event.qr_image_path,
+            "send_instruction": bool(send_instruction),
+            "send_qr": bool(send_qr),
+            "send_receipt_received": bool(send_receipt_received),
+            "send_after_payment": bool(send_after_payment),
+            "send_need_contacts": bool(send_need_contacts),
         }
         return templates.TemplateResponse(
             "event_form.html",
@@ -286,6 +292,11 @@ async def update_event_submit(
     event.msg_after_payment = msg_after_payment or DEFAULT_TEXTS["msg_after_payment"]
     event.msg_receipt_received = msg_receipt_received or DEFAULT_TEXTS["msg_receipt_received"]
     event.msg_need_contacts = msg_need_contacts or DEFAULT_TEXTS["msg_need_contacts"]
+    event.send_instruction = bool(send_instruction)
+    event.send_qr = bool(send_qr)
+    event.send_receipt_received = bool(send_receipt_received)
+    event.send_after_payment = bool(send_after_payment)
+    event.send_need_contacts = bool(send_need_contacts)
 
     new_qr_path = await _save_qr_file(qr_file)
     if new_qr_path:
@@ -324,7 +335,6 @@ async def delete_event_submit(
     if event is None:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
 
-    sheet_id = event.sheet_id
     qr_image_path = event.qr_image_path
 
     result = await session.execute(
@@ -336,12 +346,6 @@ async def delete_event_submit(
 
     await delete_event(session, event_id)
     await session.commit()
-
-    if sheet_id:
-        try:
-            await sheets_sync.delete_sheet(sheet_id)
-        except Exception:
-            logger.exception("Не удалось удалить Google-лист %s", sheet_id)
 
     for path in receipt_paths:
         try:
