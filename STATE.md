@@ -2,6 +2,41 @@
 
 ## Текущая точка
 
+- **2026-06-26. Авто-подхват VK-токена без рестарта + грабли Google API.**
+  1. **`app/bot/main.py` переписан как СУПЕРВИЗОР.** Раньше токен читался один раз
+     при старте → смена в админке требовала `systemctl restart vk-bot`. Теперь
+     `_amain` — цикл: каждые `RELOAD_INTERVAL_SEC=10` сек перечитывает токен из БД;
+     если изменился (появился/сменился/очищен) — отменяет текущий
+     polling+worker-таск (`_run_bot` через `asyncio.Task` + `_stop_task`) и
+     пересоздаёт с новым токеном. Если polling сам упал — сбрасывает и пересоздаёт.
+     Процесс больше не завершается при отсутствии токена, а ждёт ввода. Итог: ввод/
+     смена токена в `/settings` подхватывается за ~10 сек, рестарт НЕ нужен.
+     Сообщение в `admin/routes/settings.py` и подсказку в `settings.html` обновил.
+     Проверено на сервере: логи `Bot supervisor started ... → Starting BotPolling →
+     Worker started`, оба сервиса active, :8080/login=200. Файлы доставлены напрямую
+     по SFTP в `/opt` и `/root` (локальная папка — НЕ git, пушит на GitHub
+     пользователь; эти 3 файла теперь лежат на сервере ВПЕРЁД origin — при следующем
+     `git pull` сделать `git restore` этих файлов перед ff, как с requirements.txt).
+  2. **Грабли Google: `APIError [403] Google Drive API has not been used in project
+     ... or it is disabled`.** В GCP-проекте нового service-account (`vkautobot`,
+     `first-720@...`) НЕ включены Drive/Sheets API. gspread требует ОБА. Лечится в
+     консоли (НЕ код): включить Google Drive API и Google Sheets API для проекта,
+     подождать пару минут. Передано заказчику. (Ранний test-sheets=200 в 08:32 был,
+     видимо, на прежнем SA — после замены json всплыло.)
+- **2026-06-26. ОБНОВЛЕНИЕ + ДОВОДКА ДЕПЛОЯ (git pull на сервере).** На сервере
+  сделан `git pull` /opt и /root до `origin/main` 520be6f (fast-forward; локальные
+  правки requirements.txt/systemd были тем же деплой-фиксом, но в кривой кодировке —
+  отброшены в пользу чистого UTF-8 из origin). `pip install` — no-op (пины те же),
+  `alembic` уже на head (0002). **Google SA-json подключён:** заказчик положил
+  `secrets/vkautobot-ad8c45a7a241.json`, но `.env` ждал `service_account.json` —
+  сделана копия `secrets/service_account.json` (owner vkbot, chmod 600, валидный
+  service_account, client_email `first-720@vkautobot.iam.gserviceaccount.com`).
+  Сервисы перезапущены: **admin-web active** (:8080 /login=200, /,/events,/settings=303,
+  публичный IPv4 :8080=200), **vk-bot active running** — Long Poll стартовал, worker
+  interval=5s. **Бот ЖИВОЙ:** VK-токен/group_id/почта Sheets уже введены заказчиком
+  через админку ранее (в логах test-vk=200 и test-sheets=200 в 08:32). Деплой
+  полностью функционален. (Подключение к серверу делал через paramiko из-за отсутствия
+  sshpass/plink на Windows; временный helper-скрипт с паролем удалён.)
 - **2026-06-26. БОЕВОЙ ДЕПЛОЙ выполнен** (сервер cloud.ru, root@185.228.72.118,
   Ubuntu 24, Python 3.12.3). Рантайм — **`/opt/vk_auto_bot`** (НЕ `/root/vk_auto_bot`:
   `/root` имеет права 700, служба от vkbot туда не зайдёт; копия проекта развёрнута в

@@ -54,7 +54,7 @@ async def settings_save(
     await session.commit()
     return await _render(
         request, user, session,
-        message="Настройки сохранены. Изменение VK-токена применится после перезапуска бота.",
+        message="Настройки сохранены. Изменение VK-токена применится автоматически в течение ~10 секунд (перезапуск не нужен).",
         ok=True,
     )
 
