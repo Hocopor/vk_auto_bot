@@ -64,6 +64,17 @@ async def create_event(
     return event
 
 
+async def find_active_event_by_keyword(
+    session: AsyncSession, keyword: str, *, exclude_id: int | None = None
+) -> Event | None:
+    keyword = keyword.strip().lower()
+    stmt = select(Event).where(Event.keyword == keyword, Event.is_active.is_(True))
+    if exclude_id is not None:
+        stmt = stmt.where(Event.id != exclude_id)
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
 async def delete_event(session: AsyncSession, event_id: int) -> bool:
     result = await session.execute(
         select(Event)

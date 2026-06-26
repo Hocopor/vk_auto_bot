@@ -322,3 +322,75 @@ async def test_edit_event_google_sheet_url(client, maker):
     async with maker() as session:
         updated = await session.get(Event, event_id)
         assert updated.google_sheet_url == "https://docs.google.com/spreadsheets/d/new_url/edit"
+
+
+async def test_create_duplicate_active_keyword_blocked(client, maker):
+    """Создание мероприятия с кодовым словом, занятым другим активным
+    мероприятием, не должно приводить к 500 — должна вернуться форма с
+    понятной ошибкой."""
+    await client.post("/events", data=event_form_data(), follow_redirects=False)
+
+    resp = await client.post(
+        "/events",
+        data=event_form_data(name="Дубль", keyword="постер"),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    assert "уже используется" in resp.text
+    assert "Розыгрыш постеров" in resp.text
+
+    async with maker() as session:
+        result = await session.execute(select(Event))
+        assert len(result.scalars().all()) == 1
+
+
+async def test_update_to_duplicate_active_keyword_blocked(client, maker):
+    """Редактирование мероприятия с попыткой занять кодовое слово другого
+    активного мероприятия должно вернуть понятную ошибку, а не 500."""
+    await client.post(
+        "/events", data=event_form_data(name="Первое", keyword="постер"), follow_redirects=False
+    )
+    await client.post(
+        "/events", data=event_form_data(name="Второе", keyword="второе"), follow_redirects=False
+    )
+
+    async with maker() as session:
+        result = await session.execute(select(Event).order_by(Event.id))
+        all_events = result.scalars().all()
+        second_id = all_events[1].id
+
+    resp = await client.post(
+        f"/events/{second_id}",
+        data=event_form_data(name="Второе", keyword="постер"),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    assert "уже используется" in resp.text
+
+    async with maker() as session:
+        updated = await session.get(Event, second_id)
+        assert updated.keyword == "второе"
+
+
+async def test_update_same_event_keeps_keyword_ok(client, maker):
+    """Сохранение мероприятия со своим же текущим кодовым словом не должно
+    считаться конфликтом."""
+    await client.post(
+        "/events", data=event_form_data(name="Первое", keyword="постер"), follow_redirects=False
+    )
+
+    async with maker() as session:
+        result = await session.execute(select(Event))
+        event = result.scalars().one()
+        event_id = event.id
+
+    resp = await client.post(
+        f"/events/{event_id}",
+        data=event_form_data(name="Переименовано", keyword="постер"),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        updated = await session.get(Event, event_id)
+        assert updated.name == "Переименовано"

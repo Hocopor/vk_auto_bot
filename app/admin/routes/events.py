@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin.deps import get_session, require_login
@@ -14,7 +15,12 @@ from app.core import timeutil
 from app.core.config import settings
 from app.core.defaults import DEFAULT_TEXTS
 from app.core.models import Event, Purchase
-from app.core.services.events import create_event, delete_event, set_active
+from app.core.services.events import (
+    create_event,
+    delete_event,
+    find_active_event_by_keyword,
+    set_active,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +32,13 @@ def _parse_optional_str(value: str | None) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+def _keyword_conflict_message(conflict: Event) -> str:
+    return (
+        f"Кодовое слово уже используется в мероприятии «{conflict.name}» "
+        f"(#{conflict.id}). Выберите другое слово или остановите то мероприятие."
+    )
 
 
 async def _save_qr_file(qr_file: UploadFile | None) -> str | None:
@@ -145,6 +158,21 @@ async def create_event_submit(
             status_code=400,
         )
 
+    conflict = await find_active_event_by_keyword(session, keyword)
+    if conflict is not None:
+        return templates.TemplateResponse(
+            "event_form.html",
+            {
+                "request": request,
+                "user": user,
+                "mode": "create",
+                "event": form_values,
+                "defaults": DEFAULT_TEXTS,
+                "error": _keyword_conflict_message(conflict),
+            },
+            status_code=400,
+        )
+
     qr_image_path = await _save_qr_file(qr_file)
 
     event = await create_event(
@@ -172,7 +200,28 @@ async def create_event_submit(
     )
 
     event.google_sheet_url = _parse_optional_str(google_sheet_url)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        conflict = await find_active_event_by_keyword(session, keyword)
+        msg = (
+            _keyword_conflict_message(conflict)
+            if conflict is not None
+            else "Кодовое слово уже используется другим активным мероприятием."
+        )
+        return templates.TemplateResponse(
+            "event_form.html",
+            {
+                "request": request,
+                "user": user,
+                "mode": "create",
+                "event": form_values,
+                "defaults": DEFAULT_TEXTS,
+                "error": msg,
+            },
+            status_code=400,
+        )
     return RedirectResponse(url="/events", status_code=303)
 
 
@@ -250,6 +299,31 @@ async def update_event_submit(
     if event is None:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
 
+    form_values = {
+        "id": event.id,
+        "name": name,
+        "keyword": keyword,
+        "price": price,
+        "number_min": number_min,
+        "number_max": number_max,
+        "winners_count": winners_count,
+        "starts_at": starts_at,
+        "ends_at": ends_at,
+        "expected_recipient": expected_recipient,
+        "auto_confirm": bool(auto_confirm),
+        "msg_instruction": msg_instruction,
+        "msg_after_payment": msg_after_payment,
+        "msg_receipt_received": msg_receipt_received,
+        "msg_need_contacts": msg_need_contacts,
+        "qr_image_path": event.qr_image_path,
+        "send_instruction": bool(send_instruction),
+        "send_qr": bool(send_qr),
+        "send_receipt_received": bool(send_receipt_received),
+        "send_after_payment": bool(send_after_payment),
+        "send_need_contacts": bool(send_need_contacts),
+        "google_sheet_url": google_sheet_url,
+    }
+
     try:
         price_val = Decimal(price)
         number_min_val = int(number_min)
@@ -258,30 +332,6 @@ async def update_event_submit(
         starts_at_val = timeutil.parse_local_datetime(starts_at)
         ends_at_val = timeutil.parse_local_datetime(ends_at)
     except (InvalidOperation, ValueError):
-        form_values = {
-            "id": event.id,
-            "name": name,
-            "keyword": keyword,
-            "price": price,
-            "number_min": number_min,
-            "number_max": number_max,
-            "winners_count": winners_count,
-            "starts_at": starts_at,
-            "ends_at": ends_at,
-            "expected_recipient": expected_recipient,
-            "auto_confirm": bool(auto_confirm),
-            "msg_instruction": msg_instruction,
-            "msg_after_payment": msg_after_payment,
-            "msg_receipt_received": msg_receipt_received,
-            "msg_need_contacts": msg_need_contacts,
-            "qr_image_path": event.qr_image_path,
-            "send_instruction": bool(send_instruction),
-            "send_qr": bool(send_qr),
-            "send_receipt_received": bool(send_receipt_received),
-            "send_after_payment": bool(send_after_payment),
-            "send_need_contacts": bool(send_need_contacts),
-            "google_sheet_url": google_sheet_url,
-        }
         return templates.TemplateResponse(
             "event_form.html",
             {
@@ -294,6 +344,22 @@ async def update_event_submit(
             },
             status_code=400,
         )
+
+    if event.is_active:
+        conflict = await find_active_event_by_keyword(session, keyword, exclude_id=event.id)
+        if conflict is not None:
+            return templates.TemplateResponse(
+                "event_form.html",
+                {
+                    "request": request,
+                    "user": user,
+                    "mode": "edit",
+                    "event": form_values,
+                    "defaults": DEFAULT_TEXTS,
+                    "error": _keyword_conflict_message(conflict),
+                },
+                status_code=400,
+            )
 
     event.name = name
     event.keyword = keyword.strip().lower()
@@ -322,7 +388,28 @@ async def update_event_submit(
         event.qr_attachment = None
         event.qr_last_error = None
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        conflict = await find_active_event_by_keyword(session, keyword, exclude_id=event.id)
+        msg = (
+            _keyword_conflict_message(conflict)
+            if conflict is not None
+            else "Кодовое слово уже используется другим активным мероприятием."
+        )
+        return templates.TemplateResponse(
+            "event_form.html",
+            {
+                "request": request,
+                "user": user,
+                "mode": "edit",
+                "event": form_values,
+                "defaults": DEFAULT_TEXTS,
+                "error": msg,
+            },
+            status_code=400,
+        )
     return RedirectResponse(url="/events", status_code=303)
 
 
