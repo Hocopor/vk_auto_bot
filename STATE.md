@@ -2,79 +2,88 @@
 
 ## Текущая точка
 
-- **2026-06-26. ФАЗА 4 — фидбек заказчика после демо. В РАБОТЕ.** Доступ к боевому
-  серверу получен (root@185.228.72.118, проект в `/opt/vk_auto_bot`, копия в
-  `/root/vk_auto_bot`). Коннект — paramiko из `scripts/_ssh_run.py` (пароль в env
-  `SSH_PASS`, в код НЕ писать; helper временный, удалить после фазы).
-  - **Корневой баг «бот не реагирует на кодовое слово» НАЙДЕН и захотфикшен.** Бот
-    НА САМОМ ДЕЛЕ реагировал: находил событие, но падал на отправке QR —
-    `VK API Error 15: Access denied ... current scopes` на
-    `photos.getMessagesUploadServer`. **У VK-токена сообщества нет права
-    «Фотографии».** Загрузка QR не была обёрнута в try/except → падал ВЕСЬ
-    обработчик `_handle_keyword`, участник не получал даже текст инструкции.
-    **Хотфикс залит и в бою:** `handlers.py:_handle_keyword` теперь шлёт текст
-    всегда, QR — best-effort в try/except (`attachment=None` при ошибке). Бот
-    перезапущен, active. Чтобы прикреплялся QR — заказчику пересоздать ключ
-    сообщества с правом «Фотографии».
-  - Данные на сервере: 1 событие (active, keyword задан, starts_at/ends_at = NULL —
-    таймзона на ЭТОТ инцидент не влияла), alembic на `0002` (head), оба сервиса active.
-  - **Латентный баг таймзоны (чиню в Фазе 4):** `datetime-local` в форме даёт наивное
-    локальное время, а `is_event_open` сравнивает с `datetime.now(utc)` → если задать
-    «Начало = сейчас» по МСК, бот молчал бы 3 часа. Фикс: трактовать ввод как
-    Europe/Moscow, хранить UTC-aware, показывать обратно в МСК.
-  - **Backend-агент ЗАВЕРШЁН (123 passed, 1 skip):** timeutil.py (Europe/Moscow,
-    parse_local_datetime/to_local/format_local_input), config `display_timezone`,
-    events.py на parse_local_datetime; общий `app/admin/templating.py` (единый
-    `templates`, фильтр `localdt`, глобал `VAR_LABELS`) — все route-модули переведены
-    на него; миграция `alembic/versions/0003_message_toggles.py`
-    (down_revision=`0002_app_settings`) + 5 bool-колонок в Event; гейтинг в
-    handlers/worker; в worker ctx добавлен `event_name`. Миграции лежат в
-    `alembic/versions/` (НЕ `app/alembic/versions/`).
-  - **Frontend-агент ЕЩЁ РАБОТАЕТ** (фоном правит шаблоны `app/admin/templates/*` и
-    `static/*` — их mtime новее STATE, это норма). Дождаться его, затем: полный
-    pytest → деплой кода+шаблонов на сервер → `alembic upgrade head` (0003) →
-    рестарт сервисов → smoke + боевой прогон кодового слова.
-  - **План Фазы 4** (см. PLAN.md «Фаза 4»): (1) backend-агент — устойчивость QR
-    (сделано хотфиксом, закрепить), таймзона, тумблеры типов сообщений
-    (миграция 0003: send_instruction/send_receipt_received/send_after_payment/
-    send_need_contacts/send_qr, default TRUE), гейтинг в handlers/worker, чтение
-    чекбоксов в events.py, обновление create_event + тестов; (2) frontend-агент со
-    скилом `design-taste-frontend` — полный редизайн всех шаблонов+CSS, дружелюбные
-    «чипы вставки переменных» вместо сырых `{name}/{numbers}`, секция тумблеров,
-    индикатор «Сохранение…» на submit (лечит ощущение «вечной загрузки»). Деплой +
-    `alembic upgrade head` + pytest делает оркестратор после обоих агентов.
-- **2026-06-26. Google Sheets ПОЛНОСТЬЮ ВЫПИЛЕН — публичная таблица теперь на своём
-  сервере (HTML-страница).** Причина: сервис-аккаунт Google не может владеть файлами
-  в Drive (квота=0) → `client.create()` падал то `Drive API disabled`, то `storage
-  quota exceeded`. Решение по согласованию с заказчиком: «нахрен Google», список
-  отдаёт сам сервер. Сделано:
-  - **Публичная страница `GET /p/{event_id}`** (без авторизации) — `app/admin/routes/public.py`
-    + шаблон `public_table.html` (standalone, свой CSS, **поиск по имени/номеру** на
-      JS — люди находят себя в списке). Данные берутся из Postgres на лету
-      (`app/core/services/public_table.py: collect_records` — только approved-номера,
-      сортировка по номеру). Источник истины — БД, синхронизировать нечего.
-  - **Ссылку на страницу бот шлёт участнику** после оплаты. Новая настройка
-    `PUBLIC_BASE_URL` в `.env` (на сервере = `http://185.228.72.118:8080`), хелпер
-    `public_table.public_table_url(event_id)`. Плейсхолдер `{sheet_url}` теперь =
-    эта ссылка (в `worker.py` и `handlers.py`).
-  - **Удалено:** пакет `app/sheets/` (sync.py, client.py), `tests/test_sheets.py`,
-    зависимости `gspread`/`google-auth` из requirements, секция «Google Sheets» и
-    кнопка «Проверить Google Sheets» в `/settings`, `KEY_SHEETS_OWNER_EMAIL`, все
-    вызовы Sheets в `events.py` (create/delete листа), `moderation.py` (rebuild при
-    revoke — страница живая), синк в `worker.py` (`process_pending` больше БЕЗ
-    `sync_sheet`). Колонка `Event.sheet_id` оставлена в модели (всегда None, без
-    миграции). В `events_list.html` колонка «Google-лист» → «Список» со ссылкой `/p/{id}`.
-  - **Тесты переписаны** под отсутствие Google (worker/admin_events/admin_moderation/
-    settings) + новый `tests/test_public.py`. На сервере: **115 passed**. Живой smoke
-    на боевой БД: создал временное мероприятие+участника+3 номера → `/p/{id}`=200, имя/
-    счётчик/поиск на странице, после удаления =404. Мусор убран, БД пустая.
-  - Деплой: файлы залиты по SFTP в `/opt` и `/root`, `PUBLIC_BASE_URL` дописан в
-    `/opt/.env`, сервисы перезапущены (оба active). google-libs на сервере остались
-    установленными (не удаляются из venv автоматически) — безвредно, не импортируются.
-  - **NB:** локальные правки НЕ закоммичены в GitHub (коммитит пользователь). На
-    сервере файлы лежат впереди origin — при следующем `git pull` сделать
-    `git reset --hard origin/main` ПОСЛЕ того как пользователь запушит эти изменения.
-  - Старые «грабли Sheets-владения/OAuth» ниже в этом файле — ИСТОРИЯ, более неактуальны.
+- **2026-06-26. ФАЗА 6 — РЕАЛИЗАЦИЯ ИДЁТ.**
+  - **6.1 (backend-баги) ЗАВЕРШЕНА** (coder-агент, TDD, скилы fastapi-patterns +
+    test-driven-development): (1) VK-ссылка на чат теперь `vk.com/gim{group_id}?sel={uid}`
+    (group_id из app_settings, прокинут в контекст роутов модерации; формат `write-`
+    выпилен полностью); (2) `{sheet_url}` по режиму — добавлен `sync.reader_url()`
+    (`/preview`), хелперы `_resolve_sheet_url` в `worker.py` и `handlers.py` (ленивый
+    импорт, фолбэк на public_table); (3) сообщение «просьба контактов» убрано —
+    4-й msg-блок удалён из `event_form.html`, дефолт `send_need_contacts=False`.
+    Тесты: **159 passed, 1 skipped** (+8 новых).
+  - **6.3 (фронт) — ПОЛНЫЙ РЕВРАЙТ С НУЛЯ, ИДЁТ.** Заказчик забраковал текущую
+    токен-систему Фазы 5 как «кривую» (рассыпанные инлайн-стили, плохое
+    выравнивание) и потребовал переделку с нуля с использованием скилов. Запущен
+    architect(opus)-агент со скилами `frontend-design-direction` +
+    `design-taste-frontend`: новая дизайн-система (шкала отступов 8px, одна шкала
+    радиусов, семантические токены обе темы, акцент indigo, НОЛЬ инлайн-стилей,
+    выровненные формы/таблицы, активная навигация из `request.url.path`). Жёсткие
+    контракты сохранены (theme-toggle/data-theme/localStorage, var-chips, QR-ids,
+    `<b id="count">`, name=/action= форм, gim-ссылка, get_admin_title/is_winners_enabled).
+  - **Локальная QA-среда поднята:** `scripts/local_dev_seed.py` (SQLite
+    `./data/local_dev.db` + демо-данные), запуск uvicorn на :8000 с env
+    (DATABASE_URL=sqlite+aiosqlite, login admin/admin). **agent-browser** установлен
+    (v0.31.0, `A:\DevAI\agent-browser.cmd`) + движок браузера — связка
+    браузер→CDP→скриншот ПРОВЕРЕНА. Визуальная проверка обеих тем + мобилы —
+    после завершения реврайта.
+  - **Дальше:** дождаться реврайт-агента → визуальная QA (agent-browser, обе темы) →
+    починить найденное → pytest → деплой (GitHub push → git pull на сервере → restart
+    → smoke) → финальная браузер-проверка на боевом.
+- **2026-06-26. ФАЗА 6 (исходный план) — доводка фидбека + ПОЛНЫЙ редизайн фронтенда.**
+  Повторная ревизия `edit.md` (по запросу заказчика) выявила
+  3 недоделки + требование полностью переделать фронт. План — `PLAN.md → Фаза 6`.
+  - **6.1 Баги поведения (чинить):** (1) VK-ссылка на чат сломана — в
+    `moderation_list.html:63` / `purchase_detail.html:45` стоит
+    `vk.com/write-{event_id}&vk_user_id=` (event_id ≠ group_id, формат невалиден);
+    надо `https://vk.com/gim{group_id}?sel={vk_user_id}`, group_id из app_settings
+    (`KEY_VK_GROUP_ID`), прокинуть в контекст роутов модерации. (2) `{sheet_url}`
+    всегда `/p/{id}` (`worker.py:77`, `handlers.py:60`) — в режиме Google Sheets
+    участнику не уходит ссылка на таблицу; добавить `sync.reader_url()` →
+    `/preview`, выбирать по `event.google_sheet_url`. (3) Сообщение «просьба
+    контактов» (msg_need_contacts) не убрано — убрать блок из формы, default
+    `send_need_contacts=False`.
+  - **6.2 Документация** решений (второй режим = поле на ивент; права доступа к
+    таблице) — ЗАПИСАНО в Журнал решений PLAN.md.
+  - **6.3 Редизайн фронта** как токен-система (скилы frontend-design-direction +
+    design-taste-frontend подключены при проектировании). Диалы VARIANCE 3 /
+    MOTION 2 / DENSITY 6, ванильный CSS/Jinja2, светлая+тёмная темы, единый акцент
+    indigo. Перевёрстка всех 10 шаблонов.
+  - **6.4 Тесты + деплой.**
+  - Дизайн-направление и ТЗ по каждому пункту — в `PLAN.md → Фаза 6`.
+- **2026-06-26. ФАЗА 5 — фидбек заказчика (edit.md). ЗАВЕРШЕНА.**
+  - **Backend Фазы 4 ЗАВЕРШЁН** (123 passed, 1 skip): таймзона, тумблеры,
+    гейтинг, QR best-effort.
+  - **Frontend Фазы 5 ЗАВЕРШЁН** — CSS dark theme, редизайн ВСЕХ шаблонов,
+    звёздочки, QR-превью, единый блок сообщений, VK-ссылки на чат,
+    настройки (название, вкладка победителей), google_sheet_url + миграция 0004.
+  - **5.5.2 + 5.5.3 ЗАВЕРШЕНЫ** — sync-логика Google Sheets восстановлена:
+    `app/sheets/client.py` (ленitive gspread), `app/sheets/sync.py`
+    (`sync_event_to_sheet`: шапка, upsert, удаление лишних строк). Воркер
+    вызывает sync best-effort если `event.google_sheet_url` задан. Tests: 9 в
+    `test_sheets_sync.py` + 3 в `test_worker.py` (итого ~135+ passed).
+  - **5.6 ЗАВЕРШЕНЫ** — E2E тесты (7: полный флоу, публичная таблица HTTP,
+    Google Sheets sync, отзыв номеров, каскадное удаление, настройки,
+    несколько участников) + тесты тёмной темы (5: theme toggle, admin.js,
+    settings page) + обновлены тесты admin_events под google_sheet_url.
+  - **5.7 ЗАВЕРШЁН** — деплой на сервер: 152 passed, оба сервиса active.
+  - Доступ к боевому серверу: root@185.228.72.118, проект `/opt/vk_auto_bot`
+    (рантайм) + `/root/vk_auto_bot` (git-checkout). Коннект — paramiko
+    (`scripts/_ssh_run.py`, пароль в env `SSH_PASS`, в код НЕ писать).
+- **2026-06-26. Google Sheets ВОССТАНОВЛЕН как опциональный 2-й режим.** Причина:
+  заказчик хочет дать возможность тестировать оба режима (своя HTML-таблица vs
+  Google Sheets). Сделано:
+  - **`app/sheets/client.py`** — ленивый gspread-клиент через service account.
+  - **`app/sheets/sync.py`** — `sync_event_to_sheet(session, event_id, url)`:
+    идемпотентная: создаёт шапку если пусто, проверяет/корректирует формат,
+    upsert approved-номеров, удаление лишних строк. Best-effort (try/except).
+  - **`worker.py`** — после присвоения номеров, если `event.google_sheet_url`
+    задан → вызов `sync_event_to_sheet` (best-effort, не падает воркер).
+  - **`requirements.txt`** — добавлены `gspread>=6.0`, `google-auth>=2.0`.
+  - **Тесты**: `test_sheets_sync.py` (9 tests: URL parsing + sync logic с моками),
+    `test_worker.py` (+3 tests: sync called / not called / failure resilient).
+  - Два режима: (1) HTML `/p/{id}` — по дефолту, (2) Google Sheets — если
+    `event.google_sheet_url` задан в форме мероприятия. Ссылка для участников
+    определяется автоматически.
 - **2026-06-26. Авто-подхват VK-токена без рестарта + грабли Google API.**
   1. **`app/bot/main.py` переписан как СУПЕРВИЗОР.** Раньше токен читался один раз
      при старте → смена в админке требовала `systemctl restart vk-bot`. Теперь
@@ -217,24 +226,28 @@
 
 ## Следующий шаг
 
-- **Разработка завершена (включая Фазу 3 — конфигурация из админки).** Остались
-  задачи вне кода (на стороне заказчика/боевого окружения):
-  1. Развернуть на сервере cloud.ru по README (Ubuntu): PostgreSQL, `.env`
-     (DATABASE_URL, GOOGLE_SA_JSON, ADMIN_PASSWORD_HASH через
-     `scripts/gen_password_hash.py`, SESSION_SECRET, **SECRETS_KEY** через
-     `scripts/gen_secrets_key.py`; VK_TOKEN/VK_GROUP_ID можно НЕ заполнять — заказчик
-     введёт в админке `/settings`), `alembic upgrade head` (поднимет и `0002_app_settings`),
-     systemd, Caddy (фрагмент `caddy/vk_admin.caddy` → `/etc/caddy/conf.d/`, порт 8080,
-     открыть в security group). Tesseract (`tesseract-ocr tesseract-ocr-rus`) для OCR.
-  1a. Заказчик в админке `/settings` вводит VK-токен/group_id/почту Google и жмёт
-     «Проверить VK» / «Проверить Google Sheets». После ввода токена — рестарт бота.
-  2. Ручной прогон полного сценария в реальном ВК (кодовое слово → чек → модерация →
-     номера → таблица → розыгрыш) — единственное, что не покрыть локально без токена.
-  3. Опц.: отправить заказчику открытые вопросы `ТЗ_ИТОГ §16` (помечено в Фазе 0).
-- Возможные доработки по фидбеку после демо: тонкая настройка OCR-регэкспов под
-  реальные банки-чеки заказчика; UI-полировка админки.
+- **Фаза 6 спланирована, ждём отмашку заказчика на старт реализации.** Порядок:
+  6.1 (баги поведения, backend) → 6.3.1–6.3.3 (токен-слой + компоненты) →
+  6.3.4 (перевёрстка страниц) → 6.4 (тесты + деплой). 6.2 (документация) уже сделана.
+  Начинать с 6.1.1 (VK-ссылка на чат) — самостоятельный backend-фикс с тестом.
 
 ## Нюансы (грабли, лимиты, особенности — пополняется по ходу)
+
+- **Локальная браузерная QA без PG:** `engine` в `db.py` берёт `settings.database_url`
+  при импорте → локально гоняем на SQLite, задав env `DATABASE_URL=sqlite+aiosqlite:///./data/local_dev.db`.
+  Сид: `PYTHONPATH=. DATABASE_URL=... python scripts/local_dev_seed.py` (drop+create_all +
+  демо-данные, login admin/admin). Запуск: тот же набор env (DATABASE_URL, SECRETS_KEY,
+  ADMIN_LOGIN, ADMIN_PASSWORD_HASH, SESSION_SECRET, PUBLIC_BASE_URL) + `python -m uvicorn
+  app.admin.main:app --host 127.0.0.1 --port 8000`. Скрипт `scripts/local_dev_seed.py`
+  держит env-дефолты вверху ДО импорта app.* . `./data/local_dev.db` в .gitignore.
+- **agent-browser на Windows:** CLI = `A:\DevAI\agent-browser.cmd` (v0.31.0, npm global
+  prefix у пользователя = `A:\DevAI`, НЕ в PATH этой сессии — звать по полному пути).
+  Гайд: `agent-browser skills get core`. Грабли PowerShell: native exe пишет статус в
+  stderr («[agent-browser] launched browser»), а `2>&1 | Select` оборачивает это в
+  NativeCommandError и рвёт цепочку команд — вызывать `open`/`screenshot` БЕЗ `2>&1`,
+  отдельными вызовами (сессия браузера живёт между командами). Связка
+  браузер→CDP→скриншот проверена (`data/screens/`).
+
 
 - **VK Error 15 (subcode 1133) на `photos.getMessagesUploadServer` = у токена
   сообщества нет права «Фотографии».** Лечится пересозданием ключа сообщества в ВК
@@ -336,3 +349,7 @@
   переносится в рамках одного клиента; `follow_redirects=False` для проверки 303.
   `verify_credentials` читает `settings` динамически → в тестах monkeypatch
   `settings.admin_login`/`admin_password_hash`.
+- **`on_event("startup")` Deprecated** в FastAPI 0.116+ — используется для кэша
+  настроек (`admin_title`, `winners_tab_enabled`) в `main.py`. Работает, но при
+  обновлении FastAPI мигрировать на `lifespan` context manager. Пока пин
+  `fastapi==0.116.2` держит совместимость.

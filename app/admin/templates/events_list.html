@@ -1,62 +1,64 @@
 {% extends "base.html" %}
 
-{% block title %}Мероприятия — Админка розыгрышей{% endblock %}
+{% block title %}Мероприятия — {{ get_admin_title() }}{% endblock %}
 
 {% block content %}
 <div class="page-head">
     <div>
         <h1>Мероприятия</h1>
-        <p class="lead">Розыгрыши, которые ведёт бот. Создавайте новые, редактируйте тексты и запускайте приём заявок.</p>
+        <p class="lead">Розыгрыши, которые ведёт бот.</p>
     </div>
     <div class="page-head-actions">
-        <a href="/events/new" class="btn btn-primary">+ Создать мероприятие</a>
+        <a href="/events/new" class="btn btn-primary">+ Создать</a>
     </div>
 </div>
 
 {% if events %}
-<div class="table-wrap">
-    <table class="data">
+<div class="table-scroll">
+    <table class="table">
         <thead>
             <tr>
                 <th>Название</th>
-                <th>Кодовое слово</th>
+                <th>Слово</th>
                 <th>Статус</th>
-                <th>Цена</th>
-                <th>Номера</th>
-                <th>Начало</th>
-                <th>Окончание</th>
-                <th>Список</th>
-                <th class="cell-actions">Действия</th>
+                <th class="num">Цена</th>
+                <th class="num">Номера</th>
+                <th>Сроки</th>
+                <th class="col-actions"></th>
             </tr>
         </thead>
         <tbody>
             {% for event in events %}
             <tr>
                 <td><strong>{{ event.name }}</strong></td>
-                <td><span class="badge badge-slate">{{ event.keyword }}</span></td>
+                <td><span class="badge badge-neutral">{{ event.keyword }}</span></td>
                 <td>
                     {% if event.is_active %}
-                    <span class="badge badge-green"><span class="dot"></span>Активно</span>
+                    <span class="badge badge-success"><span class="dot"></span>Активно</span>
                     {% else %}
-                    <span class="badge badge-slate"><span class="dot"></span>Остановлено</span>
+                    <span class="badge badge-neutral"><span class="dot"></span>Стоп</span>
                     {% endif %}
                 </td>
-                <td class="num">{{ event.price }} ₽</td>
-                <td class="num">{{ event.number_min }}–{{ event.number_max }}</td>
-                <td class="num">{{ event.starts_at.strftime('%d.%m.%Y %H:%M') if event.starts_at else "—" }}</td>
-                <td class="num">{{ event.ends_at.strftime('%d.%m.%Y %H:%M') if event.ends_at else "—" }}</td>
-                <td><a href="/p/{{ event.id }}" target="_blank">Открыть</a></td>
-                <td class="cell-actions">
-                    <div class="btn-row">
-                        <a href="/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">Изменить</a>
-                        <form method="post" action="/events/{{ event.id }}/toggle" style="display:inline" data-no-loading>
+                <td class="num nowrap">{{ event.price|int }} ₽</td>
+                <td class="num nowrap">{{ event.number_min }}–{{ event.number_max }}</td>
+                <td class="muted nowrap">
+                    {%- if event.starts_at %}{{ event.starts_at.strftime('%d.%m') }}{% endif %}
+                    {%- if event.starts_at and event.ends_at %} — {% endif %}
+                    {%- if event.ends_at %}{{ event.ends_at.strftime('%d.%m') }}{% endif %}
+                    {%- if not event.starts_at and not event.ends_at %}—{% endif %}
+                </td>
+                <td class="col-actions">
+                    <div class="btn-row is-end">
+                        <a href="/p/{{ event.id }}" class="btn btn-ghost btn-sm" target="_blank">Список</a>
+                        <a href="/events/{{ event.id }}/edit" class="btn btn-secondary btn-sm">Изм.</a>
+                        <form method="post" action="/events/{{ event.id }}/toggle" class="inline-form" data-no-loading>
                             <button type="submit" class="btn btn-sm {% if event.is_active %}btn-secondary{% else %}btn-success{% endif %}">
                                 {% if event.is_active %}Стоп{% else %}Старт{% endif %}
                             </button>
                         </form>
-                        <form method="post" action="/events/{{ event.id }}/delete" style="display:inline" data-no-loading
-                              onsubmit="return confirm('Удалить мероприятие и все его данные? Это действие необратимо.')">
-                            <button type="submit" class="btn btn-danger btn-sm">Удалить</button>
+                        <form method="post" action="/events/{{ event.id }}/delete" class="inline-form" data-no-loading
+                              onsubmit="return confirm('Удалить мероприятие и все данные?')">
+                            <button type="submit" class="btn btn-danger btn-sm">✕</button>
                         </form>
                     </div>
                 </td>
@@ -66,15 +68,15 @@
     </table>
 </div>
 {% else %}
-<div class="card">
+<div class="panel">
     <div class="empty-state">
-        <div class="empty-emoji">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#4338ca" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="empty-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>
             </svg>
         </div>
         <h3>Мероприятий пока нет</h3>
-        <p>Создайте первый розыгрыш — задайте кодовое слово, цену билета и тексты сообщений.</p>
+        <p>Создайте первый розыгрыш.</p>
         <a href="/events/new" class="btn btn-primary">+ Создать мероприятие</a>
     </div>
 </div>

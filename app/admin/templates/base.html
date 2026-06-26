@@ -3,26 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Админка розыгрышей{% endblock %}</title>
+    <title>{% block title %}{{ get_admin_title() }}{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+    {% set path = request.url.path %}
     <header class="site-header">
         <div class="header-inner">
-            <a href="/" class="brand"><span class="brand-dot"></span>Розыгрыши</a>
+            <a href="/" class="brand"><span class="brand-dot"></span>{{ get_admin_title() }}</a>
             {% if user %}
             <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
             <label for="nav-toggle" class="nav-burger" aria-label="Меню"><span></span></label>
             <nav class="header-nav">
-                <a class="nav-link {% if active_nav == 'events' %}is-active{% endif %}" href="/events">Мероприятия</a>
-                <a class="nav-link {% if active_nav == 'moderation' %}is-active{% endif %}" href="/moderation">Модерация</a>
-                <a class="nav-link {% if active_nav == 'participants' %}is-active{% endif %}" href="/participants">Участники</a>
-                <a class="nav-link {% if active_nav == 'winners' %}is-active{% endif %}" href="/winners">Победители</a>
-                <a class="nav-link {% if active_nav == 'settings' %}is-active{% endif %}" href="/settings">Настройки</a>
+                <a class="nav-link {% if path.startswith('/events') %}is-active{% endif %}" href="/events">Мероприятия</a>
+                <a class="nav-link {% if path.startswith('/moderation') %}is-active{% endif %}" href="/moderation">Модерация</a>
+                <a class="nav-link {% if path.startswith('/participants') %}is-active{% endif %}" href="/participants">Участники</a>
+                {% if is_winners_enabled() %}
+                <a class="nav-link {% if path.startswith('/winners') %}is-active{% endif %}" href="/winners">Победители</a>
+                {% endif %}
+                <a class="nav-link {% if path.startswith('/settings') %}is-active{% endif %}" href="/settings">Настройки</a>
                 <a class="nav-link" href="/logout">Выход</a>
+                <button type="button" class="theme-toggle" title="Переключить тему">☽</button>
                 <span class="header-user">{{ user }}</span>
             </nav>
             {% endif %}

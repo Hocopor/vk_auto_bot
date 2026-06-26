@@ -1,10 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Участники — Админка{% endblock %}
+{% block title %}Участники — {{ get_admin_title() }}{% endblock %}
 {% block content %}
 <div class="page-head">
     <div>
         <h1>Участники</h1>
-        <p class="lead">Список участников выбранного розыгрыша и их номера билетов.</p>
     </div>
 </div>
 
@@ -16,34 +15,31 @@
             <option value="{{ e.id }}" {% if event_id==e.id %}selected{% endif %}>{{ e.name }}</option>
             {% endfor %}
         </select>
-        <button type="submit" class="btn btn-secondary">Показать</button>
     </form>
 </div>
 
 {% if event_id is none %}
-<div class="card">
+<div class="panel">
     <div class="empty-state">
-        <div class="empty-emoji">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#4338ca" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="empty-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
             </svg>
         </div>
         <h3>Выберите мероприятие</h3>
-        <p>Чтобы увидеть список участников, выберите розыгрыш в списке выше.</p>
     </div>
 </div>
 {% elif participants %}
-<div class="table-wrap">
-    <table class="data">
+<div class="table-scroll">
+    <table class="table">
         <thead>
             <tr>
-                <th>VK ID</th>
-                <th>Имя ВКонтакте</th>
-                <th>Ссылка</th>
-                <th>Имя (указано)</th>
+                <th class="num">VK ID</th>
+                <th>Имя ВК</th>
+                <th>Имя</th>
                 <th>Телефон</th>
                 <th>Номера</th>
-                <th>Кол-во</th>
+                <th class="num">Кол-во</th>
             </tr>
         </thead>
         <tbody>
@@ -52,10 +48,9 @@
             <tr>
                 <td class="num">{{ p.vk_user_id }}</td>
                 <td>{{ p.vk_name or "" }}</td>
-                <td>{% if p.vk_link %}<a href="{{ p.vk_link }}" target="_blank">Профиль</a>{% endif %}</td>
                 <td>{{ p.provided_name or "" }}</td>
                 <td class="num">{{ p.phone or "" }}</td>
-                <td class="num">{{ nums|join(", ") }}</td>
+                <td class="num nowrap">{{ nums|join(", ") }}</td>
                 <td class="num">{{ nums|length }}</td>
             </tr>
             {% endfor %}
@@ -63,10 +58,9 @@
     </table>
 </div>
 {% else %}
-<div class="card">
+<div class="panel">
     <div class="empty-state">
         <h3>Пока нет участников</h3>
-        <p>У этого мероприятия ещё нет участников с оплаченными билетами.</p>
     </div>
 </div>
 {% endif %}

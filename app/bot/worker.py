@@ -18,6 +18,19 @@ logger = logging.getLogger(__name__)
 SendMessage = Callable[[int, str], Awaitable[None]]
 
 
+def _resolve_sheet_url(event) -> str:
+    if event.google_sheet_url:
+        from app.sheets.sync import reader_url
+
+        try:
+            return reader_url(event.google_sheet_url)
+        except Exception:
+            logger.exception(
+                "reader_url failed for event %s, fallback to public table", event.id
+            )
+    return public_table.public_table_url(event.id)
+
+
 async def process_pending(
     session: AsyncSession,
     *,
@@ -74,7 +87,7 @@ async def process_pending(
             "numbers": format_numbers(numbers),
             "count": len(numbers),
             "price": event.price,
-            "sheet_url": public_table.public_table_url(event.id),
+            "sheet_url": _resolve_sheet_url(event),
             "event_name": event.name,
         }
 
@@ -101,6 +114,20 @@ async def process_pending(
                 logger.exception(
                     "Failed to send need-contacts message to vk_user_id=%s",
                     participant.vk_user_id,
+                )
+
+        # Sync to Google Sheet if configured
+        if event.google_sheet_url:
+            try:
+                from app.sheets.sync import sync_event_to_sheet
+
+                await sync_event_to_sheet(
+                    session, event.id, event.google_sheet_url
+                )
+            except Exception:
+                logger.exception(
+                    "Google Sheets sync failed for event %s (best-effort, continuing)",
+                    event.id,
                 )
 
         processed += 1

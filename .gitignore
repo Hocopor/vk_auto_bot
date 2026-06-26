@@ -6,5 +6,11 @@ venv/
 secrets/*.json
 data/receipts/*
 !data/receipts/.gitkeep
+data/*.db
+data/local_dev.db
+data/screens/
 *.log
 .pytest_cache/
+edit.md
+edit.md
+ssh.md

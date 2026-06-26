@@ -31,7 +31,7 @@ async def create_event(
     send_qr: bool = True,
     send_receipt_received: bool = True,
     send_after_payment: bool = True,
-    send_need_contacts: bool = True,
+    send_need_contacts: bool = False,
 ) -> Event:
     keyword = keyword.strip().lower()
 

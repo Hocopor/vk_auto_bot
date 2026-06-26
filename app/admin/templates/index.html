@@ -1,12 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Главная — Админка розыгрышей{% endblock %}
+{% block title %}Главная — {{ get_admin_title() }}{% endblock %}
 
 {% block content %}
 <div class="page-head">
     <div>
         <h1>Здравствуйте, {{ user }}</h1>
-        <p class="lead">Выберите раздел, чтобы управлять розыгрышами, проверять оплаты и выбирать победителей.</p>
     </div>
 </div>
 
@@ -18,7 +17,7 @@
             </svg>
         </span>
         <span class="dash-title">Мероприятия</span>
-        <span class="dash-desc">Создавайте розыгрыши, задавайте цену, тексты и QR-код, запускайте и останавливайте.</span>
+        <span class="dash-desc">Создавайте розыгрыши, тексты, QR-код.</span>
     </a>
 
     <a class="dash-card" href="/moderation">
@@ -27,8 +26,8 @@
                 <path d="M9 12l2 2 4-4"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
             </svg>
         </span>
-        <span class="dash-title">Модерация чеков</span>
-        <span class="dash-desc">Проверяйте присланные чеки об оплате и подтверждайте участие.</span>
+        <span class="dash-title">Модерация</span>
+        <span class="dash-desc">Проверяйте чеки и подтверждайте оплату.</span>
     </a>
 
     <a class="dash-card" href="/participants">
@@ -38,27 +37,29 @@
             </svg>
         </span>
         <span class="dash-title">Участники</span>
-        <span class="dash-desc">Смотрите список участников каждого розыгрыша и их номера билетов.</span>
+        <span class="dash-desc">Список участников и номера.</span>
     </a>
 
+    {% if is_winners_enabled() %}
     <a class="dash-card" href="/winners">
         <span class="dash-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3"/>
+                <path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/>
             </svg>
         </span>
         <span class="dash-title">Победители</span>
-        <span class="dash-desc">Запускайте розыгрыш и получайте список победителей из оплаченных номеров.</span>
+        <span class="dash-desc">Розыгрыш победителей.</span>
     </a>
+    {% endif %}
 
     <a class="dash-card" href="/settings">
         <span class="dash-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.17V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 7.5 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15H4.5a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 6.6 6.5l.33-1.82A2 2 0 1 1 9.76 1.85"/>
+                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.17V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 7.5 19.4"/>
             </svg>
         </span>
         <span class="dash-title">Настройки</span>
-        <span class="dash-desc">Подключение ВКонтакте: токен сообщества и проверка связи.</span>
+        <span class="dash-desc">Токен, название, тема.</span>
     </a>
 </div>
 {% endblock %}

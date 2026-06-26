@@ -10,6 +10,7 @@ from app.admin.main import app
 from app.core import models  # noqa: F401
 from app.core.db import Base
 from app.core.models import Participant, PosterNumber, Purchase, PurchaseStatus
+from app.core.services import app_settings
 from app.core.services.events import create_event
 
 
@@ -217,3 +218,39 @@ async def test_receipt_404_when_missing(client, maker):
 
     resp = await client.get(f"/moderation/{purchase_id}/receipt")
     assert resp.status_code == 404
+
+
+async def test_vk_chat_link_uses_gim_format_when_group_id_set(client, maker):
+    event_id = await make_event(maker)
+    participant_id = await make_participant(maker, event_id, vk_user_id=777)
+    purchase_id = await make_purchase(maker, event_id, participant_id)
+
+    async with maker() as session:
+        await app_settings.set_setting(session, app_settings.KEY_VK_GROUP_ID, "123456")
+        await session.commit()
+
+    resp_list = await client.get("/moderation")
+    assert resp_list.status_code == 200
+    assert "gim123456?sel=777" in resp_list.text
+    assert "write-" not in resp_list.text
+
+    resp_detail = await client.get(f"/moderation/{purchase_id}")
+    assert resp_detail.status_code == 200
+    assert "gim123456?sel=777" in resp_detail.text
+    assert "write-" not in resp_detail.text
+
+
+async def test_vk_chat_link_absent_when_group_id_not_set(client, maker):
+    event_id = await make_event(maker)
+    participant_id = await make_participant(maker, event_id, vk_user_id=777)
+    purchase_id = await make_purchase(maker, event_id, participant_id)
+
+    resp_list = await client.get("/moderation")
+    assert resp_list.status_code == 200
+    assert "gim" not in resp_list.text
+    assert "write-" not in resp_list.text
+
+    resp_detail = await client.get(f"/moderation/{purchase_id}")
+    assert resp_detail.status_code == 200
+    assert "gim" not in resp_detail.text
+    assert "write-" not in resp_detail.text

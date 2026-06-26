@@ -99,6 +99,7 @@ async def create_event_submit(
     send_after_payment: str | None = Form(None),
     send_need_contacts: str | None = Form(None),
     qr_file: UploadFile | None = None,
+    google_sheet_url: str = Form(""),
 ):
     form_values = {
         "name": name,
@@ -120,6 +121,7 @@ async def create_event_submit(
         "send_receipt_received": bool(send_receipt_received),
         "send_after_payment": bool(send_after_payment),
         "send_need_contacts": bool(send_need_contacts),
+        "google_sheet_url": google_sheet_url,
     }
 
     try:
@@ -169,8 +171,7 @@ async def create_event_submit(
         send_need_contacts=bool(send_need_contacts),
     )
 
-    # Публичная таблица участников отдаётся самим сервером по /p/{event.id};
-    # внешние сервисы (Google) не используются — создавать ничего не нужно.
+    event.google_sheet_url = _parse_optional_str(google_sheet_url)
     await session.commit()
     return RedirectResponse(url="/events", status_code=303)
 
@@ -227,6 +228,7 @@ async def update_event_submit(
     send_after_payment: str | None = Form(None),
     send_need_contacts: str | None = Form(None),
     qr_file: UploadFile | None = None,
+    google_sheet_url: str = Form(""),
 ):
     from fastapi import HTTPException
 
@@ -264,6 +266,7 @@ async def update_event_submit(
             "send_receipt_received": bool(send_receipt_received),
             "send_after_payment": bool(send_after_payment),
             "send_need_contacts": bool(send_need_contacts),
+            "google_sheet_url": google_sheet_url,
         }
         return templates.TemplateResponse(
             "event_form.html",
@@ -297,6 +300,7 @@ async def update_event_submit(
     event.send_receipt_received = bool(send_receipt_received)
     event.send_after_payment = bool(send_after_payment)
     event.send_need_contacts = bool(send_need_contacts)
+    event.google_sheet_url = _parse_optional_str(google_sheet_url)
 
     new_qr_path = await _save_qr_file(qr_file)
     if new_qr_path:

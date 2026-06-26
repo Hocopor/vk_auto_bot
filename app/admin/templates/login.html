@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Вход — Админка розыгрышей{% endblock %}
+{% block title %}Вход — {{ get_admin_title() }}{% endblock %}
 
 {% block content %}
 <div class="login-page">
     <div class="login-card">
-        <h1>Вход в админку</h1>
-        <p class="login-sub">Управление розыгрышами билетов</p>
+        <h1>Вход</h1>
+        <p class="login-sub">{{ get_admin_title() }}</p>
 
         {% if error %}
         <p class="error-message">{{ error }}</p>

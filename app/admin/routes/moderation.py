@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.admin.deps import get_session, require_login
 from app.admin.templating import templates
 from app.core.models import Participant, PosterNumber, Purchase, PurchaseStatus
+from app.core.services import app_settings
 from app.core.services.purchases import approve, reject, revoke, set_amount
 
 router = APIRouter()
@@ -88,6 +89,8 @@ async def moderation_list(
     purchases = result.scalars().unique().all()
     rows = [{"purchase": p, "partial": _is_partial(p)} for p in purchases]
 
+    vk_group_id = await app_settings.get_setting(session, app_settings.KEY_VK_GROUP_ID)
+
     return templates.TemplateResponse(
         "moderation_list.html",
         {
@@ -98,6 +101,7 @@ async def moderation_list(
             "q": q or "",
             "event_id": event_id,
             "statuses": list(PurchaseStatus),
+            "vk_group_id": vk_group_id,
         },
     )
 
@@ -120,10 +124,17 @@ async def moderation_detail(
         raise HTTPException(status_code=404, detail="Покупка не найдена")
 
     partial = _is_partial(purchase)
+    vk_group_id = await app_settings.get_setting(session, app_settings.KEY_VK_GROUP_ID)
 
     return templates.TemplateResponse(
         "purchase_detail.html",
-        {"request": request, "user": user, "purchase": purchase, "partial": partial},
+        {
+            "request": request,
+            "user": user,
+            "purchase": purchase,
+            "partial": partial,
+            "vk_group_id": vk_group_id,
+        },
     )
 
 

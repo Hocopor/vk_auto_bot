@@ -19,3 +19,5 @@ pytest-asyncio>=0.23
 httpx>=0.27
 aiosqlite>=0.20
 cryptography>=42.0
+gspread>=6.0
+google-auth>=2.0

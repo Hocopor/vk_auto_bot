@@ -1,13 +1,12 @@
 /* Админка — общий клиентский скрипт.
    1. Вставка переменных {токен} в textarea по клику на чип.
    2. Индикатор «Сохранение…» на кнопках при отправке формы.
-   Прогрессивное улучшение: без JS формы и так работают. */
+   3. Превью QR-кода при загрузке файла.
+   4. Переключатель тёмной темы. */
 (function () {
     "use strict";
 
     /* ---- 1. Чипы вставки переменных ------------------------------------ */
-    // Кнопка-чип: <button data-insert="{name}" data-target="msg_after_payment">
-    // Вставляет токен в textarea с указанным name на позицию курсора.
     function insertAtCursor(field, text) {
         field.focus();
         var start = field.selectionStart;
@@ -20,7 +19,6 @@
             var pos = start + text.length;
             field.setSelectionRange(pos, pos);
         }
-        // Сообщаем слушателям (превью) об изменении.
         field.dispatchEvent(new Event("input", { bubbles: true }));
     }
 
@@ -37,8 +35,6 @@
     });
 
     /* ---- 2. Индикатор отправки формы ----------------------------------- */
-    // На submit любой формы с data-loading: блокируем submit-кнопку и
-    // подменяем текст, чтобы убрать ощущение «зависания».
     document.addEventListener("submit", function (e) {
         var form = e.target;
         if (!form.matches("form")) return;
@@ -50,8 +46,6 @@
         if (!btn || btn.disabled) return;
 
         var busyText = btn.getAttribute("data-loading-text") || "Сохранение…";
-        // Небольшая задержка, чтобы значение кнопки успело уйти в POST (на случай
-        // именованных submit), и форма успела отправиться до disable.
         setTimeout(function () {
             if (btn.tagName === "BUTTON") {
                 btn.dataset.originalHtml = btn.innerHTML;
@@ -61,5 +55,40 @@
             }
             btn.disabled = true;
         }, 0);
+    });
+
+    /* ---- 3. Превью QR-кода -------------------------------------------- */
+    var qrInput = document.getElementById("f-qr-file");
+    var qrPreview = document.getElementById("qr-preview");
+    if (qrInput && qrPreview) {
+        qrInput.addEventListener("change", function () {
+            var file = this.files && this.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function (ev) {
+                qrPreview.src = ev.target.result;
+                qrPreview.style.display = "block";
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    /* ---- 4. Переключатель темы ----------------------------------------- */
+    function getTheme() {
+        return localStorage.getItem("theme") || "light";
+    }
+    function setTheme(t) {
+        document.documentElement.setAttribute("data-theme", t);
+        localStorage.setItem("theme", t);
+        var btn = document.querySelector(".theme-toggle");
+        if (btn) btn.textContent = t === "dark" ? "\u2600" : "\u263E";
+    }
+    /* Применяем тему при загрузке */
+    setTheme(getTheme());
+
+    document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".theme-toggle");
+        if (!btn) return;
+        setTheme(getTheme() === "dark" ? "light" : "dark");
     });
 })();

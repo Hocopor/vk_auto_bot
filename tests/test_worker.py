@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
@@ -8,6 +9,7 @@ from app.core import models  # noqa: F401  (наполняет Base.metadata)
 from app.core.db import Base
 from app.core.models import Event, Participant, Purchase, PosterNumber, PurchaseStatus
 from app.bot.worker import process_pending
+from app.core.services import public_table
 
 
 @pytest.fixture
@@ -228,3 +230,99 @@ async def test_idempotent_second_run(session):
     assert first == 1
     assert second == 0
     assert count_after_first == count_after_second == 3
+
+
+async def test_sync_google_sheet_called_when_url_set(session):
+    """When event has google_sheet_url, sync should be called after processing."""
+    event, participant, purchase = await setup_purchase(session, posters_count=2)
+    event.google_sheet_url = "https://docs.google.com/spreadsheets/d/test123/edit"
+    await session.commit()
+
+    send, sent = make_callbacks()
+    sync_called = []
+
+    async def mock_sync(sess, eid, url):
+        sync_called.append((eid, url))
+
+    with patch("app.sheets.sync.sync_event_to_sheet", mock_sync):
+        processed = await process_pending(session, send_message=send)
+
+    assert processed == 1
+    assert len(sync_called) == 1
+    assert sync_called[0] == (event.id, event.google_sheet_url)
+
+
+async def test_sync_google_sheet_not_called_when_url_empty(session):
+    """When event has no google_sheet_url, sync should NOT be called."""
+    event, participant, purchase = await setup_purchase(session, posters_count=2)
+    send, sent = make_callbacks()
+    sync_called = []
+
+    async def mock_sync(sess, eid, url):
+        sync_called.append((eid, url))
+
+    with patch("app.sheets.sync.sync_event_to_sheet", mock_sync):
+        processed = await process_pending(session, send_message=send)
+
+    assert processed == 1
+    assert sync_called == []
+
+
+async def test_after_payment_uses_google_sheet_reader_url_when_set(session):
+    """When event.google_sheet_url is set, the {sheet_url} placeholder in the
+    after-payment message must resolve to the read-only Google Sheets preview link,
+    not the local public table URL."""
+    event, participant, purchase = await setup_purchase(session, posters_count=2)
+    event.google_sheet_url = "https://docs.google.com/spreadsheets/d/ABC123/edit"
+    event.msg_after_payment = "Таблица: {sheet_url}"
+    await session.commit()
+
+    send, sent = make_callbacks()
+
+    async def mock_sync(sess, eid, url):
+        return None
+
+    with patch("app.sheets.sync.sync_event_to_sheet", mock_sync):
+        processed = await process_pending(session, send_message=send)
+
+    assert processed == 1
+    assert len(sent) == 1
+    _, text = sent[0]
+    assert "https://docs.google.com/spreadsheets/d/ABC123/preview" in text
+
+
+async def test_after_payment_uses_public_table_url_when_no_google_sheet(session):
+    """When event.google_sheet_url is not set, {sheet_url} falls back to the
+    local public table URL (/p/{event_id})."""
+    event, participant, purchase = await setup_purchase(session, posters_count=2)
+    event.msg_after_payment = "Таблица: {sheet_url}"
+    await session.commit()
+
+    send, sent = make_callbacks()
+
+    processed = await process_pending(session, send_message=send)
+
+    assert processed == 1
+    assert len(sent) == 1
+    _, text = sent[0]
+    assert public_table.public_table_url(event.id) in text
+
+
+async def test_sync_failure_does_not_block_worker(session):
+    """If sync fails, worker should continue processing."""
+    event, participant, purchase = await setup_purchase(session, posters_count=2)
+    event.google_sheet_url = "https://docs.google.com/spreadsheets/d/test123/edit"
+    await session.commit()
+
+    send, sent = make_callbacks()
+
+    async def failing_sync(sess, eid, url):
+        raise RuntimeError("Google API down")
+
+    with patch("app.sheets.sync.sync_event_to_sheet", failing_sync):
+        processed = await process_pending(session, send_message=send)
+
+    assert processed == 1
+    await session.refresh(purchase)
+    assert purchase.numbers_assigned is True
+    assert len(sent) == 1

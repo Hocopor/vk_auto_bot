@@ -10,6 +10,7 @@ from app.admin.main import app
 from app.core import models  # noqa: F401  (наполняет Base.metadata)
 from app.core.db import Base
 from app.core.models import Event, Participant, PosterNumber, Purchase, PurchaseStatus
+from app.core.services.events import create_event
 
 
 @pytest.fixture
@@ -61,6 +62,7 @@ def event_form_data(**overrides):
         "msg_after_payment": "",
         "msg_receipt_received": "",
         "msg_need_contacts": "",
+        "google_sheet_url": "",
     }
     data.update(overrides)
     return data
@@ -221,3 +223,78 @@ async def test_other_events_untouched_on_delete(client, maker):
 
         result = await session.execute(select(PosterNumber).where(PosterNumber.event_id == second_id))
         assert len(result.scalars().all()) == 1
+
+
+async def test_create_event_with_google_sheet_url(client, maker):
+    """Event with google_sheet_url stores it correctly."""
+    resp = await client.post(
+        "/events",
+        data=event_form_data(
+            name="GS Event",
+            google_sheet_url="https://docs.google.com/spreadsheets/d/xyz123/edit",
+        ),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        result = await session.execute(select(Event))
+        event = result.scalars().one()
+        assert event.google_sheet_url == "https://docs.google.com/spreadsheets/d/xyz123/edit"
+
+
+async def test_create_event_defaults_send_need_contacts_false(maker):
+    """create_event() default for send_need_contacts changed to False —
+    the separate 'ask for contacts' message is no longer sent by default,
+    since name+phone now arrive together with the receipt."""
+    async with maker() as session:
+        event = await create_event(
+            session,
+            name="Без контактов",
+            keyword="безконтактов",
+            price=Decimal("250"),
+            number_min=1,
+            number_max=10,
+            winners_count=1,
+        )
+        await session.commit()
+        assert event.send_need_contacts is False
+
+
+async def test_create_event_via_post_has_send_need_contacts_false(client, maker):
+    """The event_form.html no longer has a 'send_need_contacts' checkbox field,
+    so creating an event through the admin form must result in the flag being off."""
+    resp = await client.post(
+        "/events",
+        data=event_form_data(name="Через форму"),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        result = await session.execute(select(Event).where(Event.name == "Через форму"))
+        event = result.scalars().one()
+        assert event.send_need_contacts is False
+
+
+async def test_edit_event_google_sheet_url(client, maker):
+    """Editing event updates google_sheet_url."""
+    await client.post("/events", data=event_form_data(), follow_redirects=False)
+
+    async with maker() as session:
+        result = await session.execute(select(Event))
+        event = result.scalars().one()
+        event_id = event.id
+
+    resp = await client.post(
+        f"/events/{event_id}",
+        data=event_form_data(
+            google_sheet_url="https://docs.google.com/spreadsheets/d/new_url/edit",
+        ),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        updated = await session.get(Event, event_id)
+        assert updated.google_sheet_url == "https://docs.google.com/spreadsheets/d/new_url/edit"

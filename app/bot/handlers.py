@@ -52,12 +52,25 @@ async def _extract_receipt_attachment(message: Message) -> tuple[str, str] | Non
     return None
 
 
+def _resolve_sheet_url(event) -> str:
+    if event.google_sheet_url:
+        from app.sheets.sync import reader_url
+
+        try:
+            return reader_url(event.google_sheet_url)
+        except Exception:
+            logger.exception(
+                "reader_url failed for event %s, fallback to public table", event.id
+            )
+    return public_table.public_table_url(event.id)
+
+
 async def _build_ctx(event, numbers=None) -> dict:
     """Контекст для рендеринга плейсхолдеров в текстах события."""
     ctx: dict = {
         "event_name": event.name,
         "price": event.price,
-        "sheet_url": public_table.public_table_url(event.id),
+        "sheet_url": _resolve_sheet_url(event),
     }
     if numbers is not None:
         from app.core.placeholders import format_numbers

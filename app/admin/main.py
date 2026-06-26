@@ -13,13 +13,14 @@ from app.admin.routes.participants import router as participants_router
 from app.admin.routes.public import router as public_router
 from app.admin.routes.settings import router as settings_router
 from app.admin.routes.winners import router as winners_router
-from app.admin.templating import templates
+from app.admin.templating import templates, refresh_settings_cache
 from app.core.config import settings
+from app.core.services import app_settings as s
 from fastapi import Depends
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="Розыгрыш — админка")
+app = FastAPI(title="Админка")
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
 app.mount("/static", StaticFiles(directory="app/admin/static"), name="static")
 
@@ -35,6 +36,15 @@ app.include_router(public_router)
 @app.exception_handler(NotAuthenticated)
 async def _not_auth_handler(request: Request, exc: NotAuthenticated):
     return RedirectResponse(url="/login", status_code=303)
+
+
+@app.on_event("startup")
+async def _load_settings_cache():
+    from app.core.db import async_session_maker
+    async with async_session_maker() as session:
+        title = await s.get_setting(session, s.KEY_ADMIN_TITLE) or "Админка"
+        winners = (await s.get_setting(session, s.KEY_WINNERS_TAB_ENABLED)) != "false"
+        refresh_settings_cache(title, winners)
 
 
 @app.get("/")

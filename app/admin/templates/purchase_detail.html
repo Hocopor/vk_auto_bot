@@ -1,112 +1,113 @@
 {% extends "base.html" %}
-{% block title %}Покупка #{{ purchase.id }} — Модерация{% endblock %}
+{% block title %}Покупка #{{ purchase.id }} — {{ get_admin_title() }}{% endblock %}
 
 {% set status_map = {
-    "pending_ocr":    ("Распознаётся", "badge-slate"),
-    "auto_confirmed": ("Подтверждено автоматически", "badge-green"),
-    "manual_review":  ("На проверке", "badge-amber"),
-    "approved":       ("Одобрено", "badge-green"),
-    "rejected":       ("Отклонено", "badge-red"),
-    "revoked":        ("Отозвано", "badge-slate")
+    "pending_ocr":    ("Распознаётся", "badge-neutral"),
+    "auto_confirmed": ("Авто", "badge-success"),
+    "manual_review":  ("Проверка", "badge-warning"),
+    "approved":       ("Одобрено", "badge-success"),
+    "rejected":       ("Отклонено", "badge-danger"),
+    "revoked":        ("Отозвано", "badge-neutral")
 } %}
 
 {% block content %}
 {% set p = purchase %}
-{% set st = status_map.get(p.status.value, (p.status.value, "badge-slate")) %}
+{% set st = status_map.get(p.status.value, (p.status.value, "badge-neutral")) %}
 
-<a href="/moderation" class="back-link">← Назад к очереди</a>
+<a href="/moderation" class="back-link">← Назад</a>
 
 <div class="page-head">
     <div>
         <h1>Покупка #{{ p.id }}</h1>
         <p class="lead">
             <span class="badge {{ st[1] }}"><span class="dot"></span>{{ st[0] }}</span>
-            {% if p.moderated_by %}<span class="muted">модератор: {{ p.moderated_by }}</span>{% endif %}
+            {% if p.moderated_by %}<span class="muted"> · {{ p.moderated_by }}</span>{% endif %}
         </p>
     </div>
 </div>
 
 {% if partial %}
-<div class="banner banner-warn">⚠ Частичная или некратная оплата — сумма не совпадает с ценой билета. Проверьте чек внимательно.</div>
+<div class="banner banner-warning">⚠ Частичная оплата — сумма не совпадает с ценой билета.</div>
 {% endif %}
 
-<div class="card card-pad">
+<div class="panel">
     <h2>Участник</h2>
-    <dl class="detail-list">
-        <div class="row"><dt>Мероприятие</dt><dd>{{ p.event.name if p.event else "—" }}</dd></div>
-        <div class="row"><dt>VK ID</dt><dd class="num">{{ p.participant.vk_user_id if p.participant else "—" }}</dd></div>
-        <div class="row"><dt>Имя ВКонтакте</dt><dd>{{ p.participant.vk_name if p.participant else "—" }}</dd></div>
-        <div class="row"><dt>Ссылка ВКонтакте</dt>
+    <dl class="dl">
+        <div class="dl-row"><dt>Мероприятие</dt><dd>{{ p.event.name if p.event else "—" }}</dd></div>
+        <div class="dl-row"><dt>VK ID</dt><dd class="num">{{ p.participant.vk_user_id if p.participant else "—" }}</dd></div>
+        <div class="dl-row"><dt>Имя ВК</dt><dd>{{ p.participant.vk_name if p.participant else "—" }}</dd></div>
+        <div class="dl-row"><dt>Ссылка</dt>
             <dd>{% if p.participant and p.participant.vk_link %}<a href="{{ p.participant.vk_link }}" target="_blank">{{ p.participant.vk_link }}</a>{% else %}—{% endif %}</dd>
         </div>
-        <div class="row"><dt>Указанное имя</dt><dd>{{ p.participant.provided_name if p.participant and p.participant.provided_name else "—" }}</dd></div>
-        <div class="row"><dt>Телефон</dt><dd>{{ p.participant.phone if p.participant and p.participant.phone else "—" }}</dd></div>
+        <div class="dl-row"><dt>Указанное имя</dt><dd>{{ p.participant.provided_name if p.participant and p.participant.provided_name else "—" }}</dd></div>
+        <div class="dl-row"><dt>Телефон</dt><dd>{{ p.participant.phone if p.participant and p.participant.phone else "—" }}</dd></div>
+        {% if vk_group_id and p.participant and p.participant.vk_user_id %}
+        <div class="dl-row"><dt>Чат ВК</dt><dd><a href="https://vk.com/gim{{ vk_group_id }}?sel={{ p.participant.vk_user_id }}" target="_blank">Написать сообщение от сообщества</a></dd></div>
+        {% endif %}
     </dl>
 </div>
 
-<div class="card card-pad">
+<div class="panel">
     <h2>Оплата</h2>
-    <dl class="detail-list">
-        <div class="row"><dt>Сумма по чеку (OCR)</dt><dd class="num">{{ p.ocr_amount if p.ocr_amount is not none else "—" }}</dd></div>
-        <div class="row"><dt>Сумма (подтверждённая)</dt><dd class="num">{{ p.amount if p.amount is not none else "—" }}</dd></div>
-        <div class="row"><dt>Количество билетов</dt><dd class="num">{{ p.posters_count if p.posters_count is not none else "—" }}</dd></div>
-        <div class="row"><dt>Уверенность распознавания</dt><dd class="num">{{ p.ocr_confidence if p.ocr_confidence is not none else "—" }}</dd></div>
-        <div class="row"><dt>Присвоенные номера</dt>
+    <dl class="dl">
+        <div class="dl-row"><dt>Сумма (OCR)</dt><dd class="num">{{ p.ocr_amount if p.ocr_amount is not none else "—" }}</dd></div>
+        <div class="dl-row"><dt>Сумма</dt><dd class="num">{{ p.amount if p.amount is not none else "—" }}</dd></div>
+        <div class="dl-row"><dt>Билетов</dt><dd class="num">{{ p.posters_count if p.posters_count is not none else "—" }}</dd></div>
+        <div class="dl-row"><dt>Номера</dt>
             <dd class="num">{% if p.poster_numbers %}{{ p.poster_numbers|map(attribute='number')|join(', ') }}{% else %}—{% endif %}</dd>
         </div>
     </dl>
 </div>
 
-<div class="card card-pad">
-    <h2>Чек об оплате</h2>
+<div class="panel">
+    <h2>Чек</h2>
     {% if p.receipt_file_path %}
-    <p><a href="/moderation/{{ p.id }}/receipt" target="_blank"><img src="/moderation/{{ p.id }}/receipt" alt="Чек об оплате" class="receipt-img"></a></p>
+    <p><a href="/moderation/{{ p.id }}/receipt" target="_blank"><img src="/moderation/{{ p.id }}/receipt" alt="Чек" class="receipt-img"></a></p>
     {% else %}
     <p class="muted">Чек не загружен.</p>
     {% endif %}
 </div>
 
-<div class="card card-pad">
-    <h2>Решение по покупке</h2>
+<div class="panel">
+    <h2>Действия</h2>
     <div class="btn-row">
-        <form method="post" action="/moderation/{{ p.id }}/approve" style="display:inline" data-loading-text="Одобряем…">
+        <form method="post" action="/moderation/{{ p.id }}/approve" class="inline-form" data-loading-text="Одобряем…">
             <button type="submit" class="btn btn-success">✓ Одобрить</button>
         </form>
-        <form method="post" action="/moderation/{{ p.id }}/reject" style="display:inline" data-no-loading
+        <form method="post" action="/moderation/{{ p.id }}/reject" class="inline-form" data-no-loading
               onsubmit="return confirm('Отклонить покупку?')">
             <button type="submit" class="btn btn-danger">Отклонить</button>
         </form>
-        <form method="post" action="/moderation/{{ p.id }}/revoke" style="display:inline" data-no-loading
-              onsubmit="return confirm('Отозвать присвоенные номера? Они станут свободны.')">
-            <button type="submit" class="btn btn-secondary">Отозвать номера</button>
+        <form method="post" action="/moderation/{{ p.id }}/revoke" class="inline-form" data-no-loading
+              onsubmit="return confirm('Отозвать номера?')">
+            <button type="submit" class="btn btn-secondary btn-sm">Отозвать номера</button>
         </form>
     </div>
 </div>
 
-<div class="card card-pad">
-    <h2>Ручная правка</h2>
-
+<div class="panel">
+    <h2>Правка</h2>
     <form method="post" action="/moderation/{{ p.id }}/amount" data-loading-text="Сохранение…">
-        <div class="field">
-            <label for="f-amount">Изменить сумму</label>
+        <div class="field field--narrow">
+            <label for="f-amount">Сумма</label>
             <div class="btn-row">
-                <input type="text" id="f-amount" name="amount" value="{{ p.amount if p.amount is not none else '' }}" style="max-width:220px">
-                <button type="submit" class="btn btn-secondary">Сохранить сумму</button>
+                <input type="text" id="f-amount" name="amount" value="{{ p.amount if p.amount is not none else '' }}">
+                <button type="submit" class="btn btn-secondary btn-sm">Сохранить</button>
             </div>
         </div>
     </form>
-
-    <form method="post" action="/moderation/{{ p.id }}/contacts" data-loading-text="Сохранение…" style="margin-top:18px">
-        <span class="field-label">Изменить контакты</span>
-        <div class="field-grid" style="margin-top:6px">
+    <form method="post" action="/moderation/{{ p.id }}/contacts" data-loading-text="Сохранение…" class="mt-4">
+        <div class="field-grid">
             <div class="field">
-                <input type="text" name="provided_name" value="{{ p.participant.provided_name if p.participant and p.participant.provided_name else '' }}" placeholder="Имя">
+                <label for="f-provided-name">Имя</label>
+                <input type="text" id="f-provided-name" name="provided_name" value="{{ p.participant.provided_name if p.participant and p.participant.provided_name else '' }}" placeholder="Имя">
             </div>
             <div class="field">
-                <input type="text" name="phone" value="{{ p.participant.phone if p.participant and p.participant.phone else '' }}" placeholder="Телефон">
+                <label for="f-phone">Телефон</label>
+                <input type="text" id="f-phone" name="phone" value="{{ p.participant.phone if p.participant and p.participant.phone else '' }}" placeholder="Телефон">
             </div>
         </div>
-        <button type="submit" class="btn btn-secondary">Сохранить контакты</button>
+        <button type="submit" class="btn btn-secondary btn-sm mt-3">Сохранить контакты</button>
     </form>
 </div>
 {% endblock %}

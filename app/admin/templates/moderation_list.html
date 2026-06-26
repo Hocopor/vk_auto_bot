@@ -1,18 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Модерация чеков — Админка{% endblock %}
+{% block title %}Модерация — {{ get_admin_title() }}{% endblock %}
 
-{# Человеческие подписи и цвета для статусов покупок #}
 {% set status_map = {
-    "pending_ocr":    ("Распознаётся", "badge-slate"),
-    "auto_confirmed": ("Подтверждено автоматически", "badge-green"),
-    "manual_review":  ("На проверке", "badge-amber"),
-    "approved":       ("Одобрено", "badge-green"),
-    "rejected":       ("Отклонено", "badge-red"),
-    "revoked":        ("Отозвано", "badge-slate")
+    "pending_ocr":    ("Распознаётся", "badge-neutral"),
+    "auto_confirmed": ("Авто", "badge-success"),
+    "manual_review":  ("Проверка", "badge-warning"),
+    "approved":       ("Одобрено", "badge-success"),
+    "rejected":       ("Отклонено", "badge-danger"),
+    "revoked":        ("Отозвано", "badge-neutral")
 } %}
 
 {% macro status_badge(value) %}
-    {% set s = status_map.get(value, (value, "badge-slate")) %}
+    {% set s = status_map.get(value, (value, "badge-neutral")) %}
     <span class="badge {{ s[1] }}"><span class="dot"></span>{{ s[0] }}</span>
 {% endmacro %}
 
@@ -20,14 +19,13 @@
 <div class="page-head">
     <div>
         <h1>Модерация чеков</h1>
-        <p class="lead">Проверяйте присланные чеки об оплате и подтверждайте участие.</p>
     </div>
 </div>
 
 <div class="toolbar">
     <form method="get" action="/moderation" class="grow" data-no-loading>
-        <input type="text" class="grow" name="q" value="{{ q }}" placeholder="Поиск: имя, телефон, vk_id, номер билета, сумма">
-        <button type="submit" class="btn btn-secondary">Найти</button>
+        <input type="text" class="grow" name="q" value="{{ q }}" placeholder="Поиск: имя, телефон, vk_id, номер, сумма">
+        <button type="submit" class="btn btn-secondary btn-sm">Найти</button>
     </form>
 </div>
 
@@ -40,18 +38,17 @@
 </div>
 
 {% if rows %}
-<div class="table-wrap">
-    <table class="data">
+<div class="table-scroll">
+    <table class="table">
         <thead>
             <tr>
-                <th>ID</th>
+                <th class="num">#</th>
                 <th>Мероприятие</th>
                 <th>Участник</th>
-                <th>Сумма</th>
-                <th>Билетов</th>
+                <th class="num">Сумма</th>
+                <th class="num">Билетов</th>
                 <th>Статус</th>
-                <th></th>
-                <th class="cell-actions"></th>
+                <th class="col-actions"></th>
             </tr>
         </thead>
         <tbody>
@@ -60,12 +57,16 @@
             <tr>
                 <td class="num muted">#{{ p.id }}</td>
                 <td>{{ p.event.name if p.event else "—" }}</td>
-                <td>{{ p.participant.provided_name or p.participant.vk_name or "—" if p.participant else "—" }}</td>
-                <td class="num">{{ p.amount if p.amount is not none else (p.ocr_amount if p.ocr_amount is not none else "—") }}</td>
+                <td>
+                    {{ p.participant.provided_name or p.participant.vk_name or "—" if p.participant else "—" }}
+                    {% if vk_group_id and p.participant and p.participant.vk_user_id %}
+                    <a class="chat-link" href="https://vk.com/gim{{ vk_group_id }}?sel={{ p.participant.vk_user_id }}" target="_blank" title="Написать в чат">💬</a>
+                    {% endif %}
+                </td>
+                <td class="num nowrap">{{ p.amount if p.amount is not none else (p.ocr_amount if p.ocr_amount is not none else "—") }}</td>
                 <td class="num">{{ p.posters_count if p.posters_count is not none else "—" }}</td>
                 <td>{{ status_badge(p.status.value) }}</td>
-                <td>{% if row.partial %}<span class="tag-warn">⚠ частичная</span>{% endif %}</td>
-                <td class="cell-actions">
+                <td class="col-actions">
                     <a href="/moderation/{{ p.id }}" class="btn btn-secondary btn-sm">Открыть</a>
                 </td>
             </tr>
@@ -74,15 +75,15 @@
     </table>
 </div>
 {% else %}
-<div class="card">
+<div class="panel">
     <div class="empty-state">
-        <div class="empty-emoji">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#4338ca" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="empty-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>
             </svg>
         </div>
         <h3>Покупок не найдено</h3>
-        <p>Здесь появятся чеки, присланные участниками. Попробуйте сбросить фильтр или поиск.</p>
+        <p>Здесь появятся чеки от участников.</p>
     </div>
 </div>
 {% endif %}

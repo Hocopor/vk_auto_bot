@@ -1,46 +1,71 @@
 {% extends "base.html" %}
-{% block title %}Настройки — Админка{% endblock %}
+{% block title %}Настройки — {{ get_admin_title() }}{% endblock %}
 {% block content %}
 <div class="page-head">
     <div>
         <h1>Настройки</h1>
-        <p class="lead">Подключение ВКонтакте: токен сообщества и проверка связи.</p>
     </div>
 </div>
 
 {% if message %}
-<div class="banner {{ 'banner-ok' if ok else 'banner-err' }}">{{ message }}</div>
+<div class="banner {{ 'banner-success' if ok else 'banner-danger' }}">{{ message }}</div>
 {% endif %}
 
-<div class="card card-pad">
-    <h2>ВКонтакте</h2>
-    <p class="card-sub">Токен сообщества нужен боту, чтобы отвечать участникам. Смена токена подхватывается автоматически (~10 секунд), перезапуск не нужен.</p>
+<form method="post" action="/settings" data-loading-text="Сохранение…">
 
-    <form method="post" action="/settings" data-loading-text="Сохранение…">
-        <div class="field">
-            <label for="f-token">Токен сообщества</label>
-            <input type="password" id="f-token" name="vk_token" autocomplete="new-password"
-                   placeholder="{{ 'задан — оставьте пустым, чтобы не менять' if vk_token_set else 'не задан' }}">
-            <p class="field-hint">Оставьте поле пустым, чтобы не менять текущий токен.</p>
+    <div class="panel">
+        <div class="panel-section">
+            <div class="panel-section-head">
+                <h2>Общие</h2>
+            </div>
+            <div class="field">
+                <label for="f-admin-title">Название админки</label>
+                <input type="text" id="f-admin-title" name="admin_title" value="{{ admin_title }}">
+                <p class="field-hint">Отображается в шапке и заголовках страниц.</p>
+            </div>
+            <div class="field">
+                <label class="check">
+                    <input type="checkbox" name="winners_tab_enabled" value="true" {% if winners_tab_enabled %}checked{% endif %}>
+                    <span>
+                        <span class="check-title">Показывать вкладку «Победители»</span>
+                        <span class="check-hint">Скрыть — если розыгрыш идёт без победителей.</span>
+                    </span>
+                </label>
+            </div>
         </div>
-        <div class="field">
-            <label for="f-group">ID сообщества (group id)</label>
-            <input type="text" id="f-group" name="vk_group_id" value="{{ vk_group_id }}">
+
+        <div class="panel-section">
+            <div class="panel-section-head">
+                <h2>ВКонтакте</h2>
+                <p>Токен сообщества нужен боту, чтобы отвечать участникам.</p>
+            </div>
+
+            <div class="field">
+                <label for="f-token">Токен сообщества</label>
+                <input type="password" id="f-token" name="vk_token" autocomplete="new-password"
+                       placeholder="{{ 'задан — оставьте пустым, чтобы не менять' if vk_token_set else 'не задан' }}">
+                <p class="field-hint">Оставьте пустым, чтобы не менять текущий токен.</p>
+            </div>
+            <div class="field">
+                <label for="f-group">ID сообщества</label>
+                <input type="text" id="f-group" name="vk_group_id" value="{{ vk_group_id }}">
+            </div>
         </div>
+    </div>
+
+    <div class="btn-row mt-4">
         <button type="submit" class="btn btn-primary">Сохранить</button>
-    </form>
-</div>
+    </div>
+</form>
 
-<div class="card card-pad">
-    <h2>Проверка подключения</h2>
-    <p class="card-sub">Проверьте, что бот может связаться с ВКонтакте по текущим настройкам.</p>
-    <form method="post" action="/settings/test-vk" data-loading-text="Проверяем…">
-        <button type="submit" class="btn btn-secondary">Проверить ВКонтакте</button>
-    </form>
+<div class="panel mt-4">
+    <div class="panel-section">
+        <div class="panel-section-head">
+            <h2>Проверка подключения</h2>
+        </div>
+        <form method="post" action="/settings/test-vk" data-loading-text="Проверяем…">
+            <button type="submit" class="btn btn-secondary">Проверить ВКонтакте</button>
+        </form>
+    </div>
 </div>
-
-<p class="field-hint" style="margin-top:18px">
-    Список участников публикуется на самом сервере: у каждого мероприятия есть страница-список
-    (ссылку бот шлёт участникам), отдельная таблица не нужна.
-</p>
 {% endblock %}
