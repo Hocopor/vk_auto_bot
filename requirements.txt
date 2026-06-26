@@ -10,6 +10,7 @@ asyncpg>=0.29
 alembic>=1.13
 pytesseract>=0.3.10
 Pillow>=10.0
+pypdfium2>=4.0   # рендер PDF-чеков в изображение для OCR (бинарные wheels, без системных зависимостей)
 passlib[bcrypt]>=1.7.4
 bcrypt>=4.0,<4.1   # passlib 1.7.4 несовместим с bcrypt>=4.1 (ломает hash/verify)
 pydantic-settings>=2.2

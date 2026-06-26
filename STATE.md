@@ -2,6 +2,31 @@
 
 ## Текущая точка
 
+- **2026-06-27. ЭТАП 8.2 (PDF-чеки: OCR + превью) — ЗАВЕРШЁН (код+тесты+e2e), ДЕПЛОЙ идёт/готов.**
+  edit.md #8. OCR теперь читает чеки в PDF, админка показывает превью PDF.
+  - **Реализация (coder-сабагент по ТЗ оркестратора, скилы TDD+fastapi-patterns):**
+    - `requirements.txt` — `pypdfium2>=4.0` (чистый бинарный wheel, без системных
+      зависимостей; локально встал `pypdfium2-5.10.1`).
+    - `app/ocr/recognize.py` — рефактор: `_is_pdf(path)` (детект по расширению ИЛИ
+      сигнатуре `%PDF-` в первых байтах), `_render_pdf_first_page(path)` (pypdfium2,
+      `PdfDocument`→`page.render(scale=2.5)`→`to_pil().convert("RGB")`), `_open_image(path)`
+      (диспетчер PDF/картинка). `_preprocess` теперь принимает `PIL.Image`, а не путь;
+      `recognize_text_sync = _preprocess(_open_image(path))`. Бот (`handlers`) уже
+      сохраняет PDF с расширением `.pdf` (doc.ext) — менять не пришлось.
+    - `app/admin/routes/moderation.py::moderation_receipt` — `media_type="application/pdf"`
+      для .pdf (FileResponse без filename = inline).
+    - `app/admin/templates/purchase_detail.html` — блок «Чек» ветвится: PDF →
+      `<iframe class="receipt-pdf">` + ссылка «Открыть PDF в новой вкладке», иначе `<img>`.
+    - `app/admin/static/style.css` — `.receipt-pdf { width:100%; height:600px; border:0; }`.
+    - `tests/test_ocr_recognize.py` — +5 тестов (генерация PDF через Pillow
+      `img.save(p,"PDF")`, детект по расширению/сигнатуре, рендер `_open_image`,
+      реальный OCR PDF под guard tesseract).
+  - **РЕЗУЛЬТАТ:** pytest **172 passed, 2 skipped** (скип — только реальный Tesseract,
+    бинаря нет на машине; `test_open_image_renders_pdf` РЕАЛЬНО прошёл — pypdfium2 рендерит).
+    e2e agent-browser на локальной SQLite-QA: покупке #2 прописан сгенерённый PDF-чек,
+    карточка `/moderation/2` показывает встроенный `<iframe>` с PDF + ссылку; роут
+    `/moderation/2/receipt` отдаёт `Content-Type: application/pdf` inline (8346 байт).
+    Скрин `data/screens/8_2_pdf_receipt.png`.
 - **2026-06-27. ЭТАП 8.1 (дубль кодового слова → дружелюбная ошибка) — ЗАВЕРШЁН И ЗАДЕПЛОЕН (коммит `54de8ec`).**
   edit.md #1. При создании/редактировании мероприятия с keyword, занятым другим
   АКТИВНЫМ мероприятием, форма повторно рендерится с понятным сообщением «Кодовое слово
@@ -27,7 +52,9 @@
   освобождает номера и не сбрасывает `numbers_assigned`; латч `numbers_assigned` навсегда
   выключает повторную доставку воркером; `set_amount` не меняет статус; approve без суммы
   → posters_count=0 → воркер молча скипает. Сделать approve/reject/revoke явной
-  идемпотентной статусной машиной.
+  идемпотентной статусной машиной. **ДОП. ТРЕБОВАНИЕ ЗАКАЗЧИКА (2026-06-27):** без
+  указанной суммы кнопка «Одобрить» не должна срабатывать (блокировать approve), рядом —
+  пометка-hint «Укажите сумму».
 - **2026-06-27. ФАЗА 8 — большой фидбек заказчика (edit.md, 13 пунктов). ИДЁТ.**
   План и проектирование всех пунктов — `PLAN.md → Фаза 8`. Приоритизация P0→P5
   (платёжный конвейер → диалог/данные → UX модерации → канбан → участники).

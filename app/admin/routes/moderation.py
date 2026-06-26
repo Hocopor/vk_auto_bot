@@ -151,7 +151,12 @@ async def moderation_receipt(
         or not os.path.exists(purchase.receipt_file_path)
     ):
         raise HTTPException(status_code=404, detail="Чек не найден")
-    return FileResponse(purchase.receipt_file_path)
+    media_type = (
+        "application/pdf"
+        if purchase.receipt_file_path.lower().endswith(".pdf")
+        else None
+    )
+    return FileResponse(purchase.receipt_file_path, media_type=media_type)
 
 
 @router.post("/moderation/{purchase_id}/approve")

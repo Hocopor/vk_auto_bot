@@ -388,12 +388,12 @@ UX модерации, потом тяжёлые UI-переделки.
       **Скилы:** fastapi-patterns, test-driven-development. **Агент:** coder (sonnet).
 
 #### 8.2 PDF-чеки: OCR + превью (edit.md #8)
-- [ ] **8.2.1** OCR PDF. Либа **pypdfium2** (pip, без системных зависимостей, кроссплат
+- [x] **8.2.1** OCR PDF. Либа **pypdfium2** (pip, без системных зависимостей, кроссплат
       Win/Linux). В `ocr/recognize.py`: если файл .pdf → рендер 1-й страницы в PIL.Image
       (pypdfium2, scale ~2-3) → дальше существующий пайплайн Tesseract. Ветка по
       расширению/сигнатуре `%PDF`. В `handlers._extract_receipt_attachment` PDF-doc уже
       подхватывается (doc.ext). Добавить pypdfium2 в requirements.
-- [ ] **8.2.2** Превью PDF в `purchase_detail.html`: если receipt — pdf, отдавать
+- [x] **8.2.2** Превью PDF в `purchase_detail.html`: если receipt — pdf, отдавать
       `<embed>/<iframe>` на роут receipt (Content-Type application/pdf) или ссылку
       «Открыть PDF». Роут `moderation_receipt` отдать с корректным media_type по
       расширению. КП: PDF-чек распознаётся (сумма/получатель), превью открывается.

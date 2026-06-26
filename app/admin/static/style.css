@@ -589,6 +589,8 @@ td.col-actions .btn-row { justify-content: flex-end; gap: var(--sp-2); flex-wrap
     border: 1px solid var(--border);
 }
 
+.receipt-pdf { width: 100%; height: 600px; border: 0; }
+
 /* Превью QR-кода */
 .qr-preview {
     display: block;

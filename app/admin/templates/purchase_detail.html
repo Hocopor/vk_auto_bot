@@ -62,7 +62,12 @@
 <div class="panel">
     <h2>Чек</h2>
     {% if p.receipt_file_path %}
-    <p><a href="/moderation/{{ p.id }}/receipt" target="_blank"><img src="/moderation/{{ p.id }}/receipt" alt="Чек" class="receipt-img"></a></p>
+      {% if p.receipt_file_path.lower().endswith('.pdf') %}
+      <p><iframe src="/moderation/{{ p.id }}/receipt" title="Чек (PDF)" class="receipt-pdf"></iframe></p>
+      <p><a href="/moderation/{{ p.id }}/receipt" target="_blank">Открыть PDF в новой вкладке</a></p>
+      {% else %}
+      <p><a href="/moderation/{{ p.id }}/receipt" target="_blank"><img src="/moderation/{{ p.id }}/receipt" alt="Чек" class="receipt-img"></a></p>
+      {% endif %}
     {% else %}
     <p class="muted">Чек не загружен.</p>
     {% endif %}
