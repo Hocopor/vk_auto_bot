@@ -120,6 +120,9 @@
                 {% endif %}
                 <input type="file" name="qr_file" accept="image/*" id="f-qr-file">
                 <img src="{% if event and event.qr_image_path and event.id %}/events/{{ event.id }}/qr{% endif %}" alt="QR-код" class="qr-preview{% if not event or not event.qr_image_path %} is-hidden{% endif %}" id="qr-preview">
+                {% if event and event.qr_last_error %}
+                <p class="error-message">Последняя отправка QR не удалась: {{ event.qr_last_error }}. Перезагрузите файл QR или проверьте права токена.</p>
+                {% endif %}
             </div>
 
             <div class="field">

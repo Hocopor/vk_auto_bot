@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from vkbottle import API
 from vkbottle.bot import Bot
 
 from app.bot.handlers import register_handlers
@@ -33,7 +34,8 @@ async def _load_vk_token() -> str | None:
 async def _run_bot(token: str) -> None:
     """Polling + воркер для данного токена. Отменяется супервизором при смене токена."""
     bot = Bot(token=token)
-    register_handlers(bot)
+    upload_api = API(token=token)
+    register_handlers(bot, upload_api)
     logger.info("Starting VK bot (Long Poll) + worker...")
     worker_task = asyncio.create_task(worker_loop(bot))
     try:
@@ -47,6 +49,10 @@ async def _run_bot(token: str) -> None:
         # Закрыть HTTP-сессию vkbottle, чтобы не копить соединения при пересоздании.
         try:
             await bot.api.http_client.close()
+        except Exception:
+            pass
+        try:
+            await upload_api.http_client.close()
         except Exception:
             pass
 

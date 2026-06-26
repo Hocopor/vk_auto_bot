@@ -76,6 +76,8 @@ class Event(Base):
     expected_recipient: Mapped[str | None] = mapped_column(Text, nullable=True)
     sheet_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     google_sheet_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qr_attachment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qr_last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

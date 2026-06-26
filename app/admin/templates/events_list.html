@@ -38,6 +38,9 @@
                     {% else %}
                     <span class="badge badge-neutral"><span class="dot"></span>Стоп</span>
                     {% endif %}
+                    {% if event.qr_last_error %}
+                    <span class="badge badge-danger" title="{{ event.qr_last_error }}"><span class="dot"></span>QR не ушёл</span>
+                    {% endif %}
                 </td>
                 <td class="num nowrap">{{ event.price|int }} ₽</td>
                 <td class="num nowrap">{{ event.number_min }}–{{ event.number_max }}</td>

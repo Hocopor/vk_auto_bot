@@ -319,6 +319,8 @@ async def update_event_submit(
     new_qr_path = await _save_qr_file(qr_file)
     if new_qr_path:
         event.qr_image_path = new_qr_path
+        event.qr_attachment = None
+        event.qr_last_error = None
 
     await session.commit()
     return RedirectResponse(url="/events", status_code=303)

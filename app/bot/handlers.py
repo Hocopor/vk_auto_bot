@@ -2,6 +2,7 @@
 
 import logging
 import os
+from datetime import datetime
 
 import aiohttp
 from vkbottle import PhotoMessageUploader
@@ -95,18 +96,22 @@ async def _get_vk_identity(message: Message) -> tuple[str | None, str | None]:
     return vk_name, vk_link
 
 
-def register_handlers(bot: Bot) -> None:
-    """Регистрирует обработчики Long Poll событий на переданном экземпляре Bot."""
+def register_handlers(bot: Bot, upload_api=None) -> None:
+    """Регистрирует обработчики Long Poll событий на переданном экземпляре Bot.
+
+    upload_api — выделенный VK API-клиент для загрузки фото (QR), отдельный от
+    bot.api, чтобы не конкурировать с Long Poll за общую aiohttp-сессию.
+    """
 
     @bot.on.message()
     async def on_message(message: Message) -> None:
         try:
-            await _handle_message(bot, message)
+            await _handle_message(bot, message, upload_api)
         except Exception:
             logger.exception("Unhandled error while processing message from_id=%s", message.from_id)
 
 
-async def _handle_message(bot: Bot, message: Message) -> None:
+async def _handle_message(bot: Bot, message: Message, upload_api=None) -> None:
     user_id = message.from_id
     vk_name, vk_link = await _get_vk_identity(message)
 
@@ -116,7 +121,7 @@ async def _handle_message(bot: Bot, message: Message) -> None:
         if attachment_info is not None:
             await _handle_receipt(bot, message, session, user_id, vk_name, vk_link, attachment_info)
         else:
-            await _handle_keyword(bot, message, session, user_id, vk_name, vk_link)
+            await _handle_keyword(bot, message, session, user_id, vk_name, vk_link, upload_api)
 
         await session.commit()
 
@@ -180,6 +185,43 @@ async def _handle_receipt(
     _ = purchase
 
 
+async def resolve_qr_attachment(
+    event,
+    upload_api,
+    *,
+    uploader_cls=PhotoMessageUploader,
+    retries: int = 3,
+) -> str | None:
+    """Готовит attachment-строку QR для сообщения.
+
+    Кэширует успешную загрузку в event.qr_attachment (грузим в VK один раз).
+    При неудаче — пишет event.qr_last_error (видно админу) и возвращает None,
+    чтобы инструкция всё равно ушла без картинки. Грузим через ВЫДЕЛЕННЫЙ API
+    (upload_api), а не через bot.api, иначе конкуренция с Long Poll рвёт загрузку.
+    """
+    if not event.send_qr:
+        return None
+    if event.qr_attachment:
+        return event.qr_attachment
+    if not event.qr_image_path or not os.path.exists(event.qr_image_path):
+        return None
+    last_exc = None
+    for _ in range(max(1, retries)):
+        try:
+            uploader = uploader_cls(upload_api)
+            attachment = await uploader.upload(file_source=event.qr_image_path)
+            event.qr_attachment = attachment
+            event.qr_last_error = None
+            return attachment
+        except Exception as e:  # noqa: BLE001
+            last_exc = e
+    event.qr_last_error = (
+        f"{datetime.now():%Y-%m-%d %H:%M} {type(last_exc).__name__}: {str(last_exc)[:200]}"
+    )
+    logger.error("QR upload failed for event %s: %s", event.id, event.qr_last_error)
+    return None
+
+
 async def _handle_keyword(
     bot: Bot,
     message: Message,
@@ -187,6 +229,7 @@ async def _handle_keyword(
     user_id: int,
     vk_name: str | None,
     vk_link: str | None,
+    upload_api=None,
 ) -> None:
     event = await dialog.find_matching_event(session, message.text or "")
     if event is None:
@@ -197,20 +240,7 @@ async def _handle_keyword(
 
     text = render(event.msg_instruction, await _build_ctx(event)) if event.send_instruction else ""
 
-    # QR прикрепляем «по возможности»: если у токена нет права «Фотографии»
-    # (VK API Error 15) или upload падает по иной причине — инструкция всё равно
-    # должна дойти до участника. Иначе бот молчит и кажется «нерабочим».
-    attachment = None
-    if event.send_qr and event.qr_image_path and os.path.exists(event.qr_image_path):
-        try:
-            uploader = PhotoMessageUploader(bot.api)
-            attachment = await uploader.upload(file_source=event.qr_image_path)
-        except Exception:
-            logger.exception(
-                "Не удалось загрузить QR (event_id=%s) — шлю инструкцию без картинки. "
-                "Проверьте, что у VK-токена сообщества включено право «Фотографии».",
-                event.id,
-            )
+    attachment = await resolve_qr_attachment(event, upload_api or bot.api)
 
     if text or attachment:
         await message.answer(text, attachment=attachment)
