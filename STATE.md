@@ -2,6 +2,21 @@
 
 ## Текущая точка
 
+- **2026-06-26. БОЕВОЙ ДЕПЛОЙ выполнен** (сервер cloud.ru, root@185.228.72.118,
+  Ubuntu 24, Python 3.12.3). Рантайм — **`/opt/vk_auto_bot`** (НЕ `/root/vk_auto_bot`:
+  `/root` имеет права 700, служба от vkbot туда не зайдёт; копия проекта развёрнута в
+  /opt, владелец vkbot, копия в /root оставлена как git-checkout). Сделано: venv +
+  зависимости; роль PG `vkbot` (пароль задан, в `.env`); `.env` создан (сгенерированы
+  `SECRETS_KEY`, `SESSION_SECRET`, `ADMIN_PASSWORD_HASH`; VK_TOKEN/GROUP_ID пустые —
+  через админку); `alembic upgrade head` (0001+0002, все таблицы); systemd
+  `admin-web`(active)/`vk-bot`(idle до токена) enabled; Caddy-фрагмент в
+  `/etc/caddy/conf.d/vk_admin.caddy` + `import` дописан в Caddyfile, reload (старые
+  сайты целы), слушает :8080. Проверено: `/login`,`/`,`/events`,`/settings` = 200,
+  неверный пароль = 401, статика и публичный IPv4 :8080 = 200. Логин/пароль админа
+  переданы пользователю в чате (в репозиторий/STATE НЕ пишем). **Осталось на стороне
+  заказчика/владельца сервера:** (1) открыть порт **8080** в security group cloud.ru;
+  (2) положить Google SA-json в `/opt/vk_auto_bot/secrets/service_account.json`;
+  (3) в админке `/settings` ввести VK-токен/group_id/почту → `systemctl restart vk-bot`.
 - **2026-06-26. Фаза 3 (UX-конфигурация для заказчика) — ЗАВЕРШЕНА, тесты зелёные
   118 passed / 1 skipped.** Цель: заказчик настраивает всё из админки, без «кишок».
   Реализовано (кодер-сабагент по полному ТЗ оркестратора):
@@ -160,6 +175,25 @@
   (`AttributeError __about__`, затем 72-byte ошибка). В `requirements.txt` закреплён
   `bcrypt>=4.0,<4.1`. Локально стоит bcrypt 4.0.1. На сервере не снимать верхнюю
   границу, пока не заменён passlib.
+- **ДЕПЛОЙ-грабли (важно для повторных установок):**
+  - **Незапиненный FastAPI/Starlette сломал админку (HTTP 500, `TypeError:
+    unhashable type: 'dict'`).** На сервере по `>=` встал starlette 1.3.1 / fastapi
+    0.138.1, где убрана старая сигнатура `TemplateResponse(name, context)` (теперь 1-й
+    позиционный — `request`, имя шаблона = dict → краш). Локально рабочий набор —
+    starlette 0.48 / fastapi 0.116.2. Починено пином в `requirements.txt`:
+    `fastapi==0.116.2`, `starlette==0.48.0`, `uvicorn[standard]==0.35.0`. Либо когда-нибудь
+    мигрировать ВСЕ `TemplateResponse(name, {...})` на новую сигнатуру
+    `TemplateResponse(request, name, {...})`.
+  - **vk-bot без токена = чистый exit 0 → с `Restart=always` бесконечный цикл
+    рестартов.** Исправлено на `Restart=on-failure` (systemd/vk-bot.service): без токена
+    служба штатно стоит inactive, реальный сбой перезапустит. После ввода токена в
+    админке — `systemctl restart vk-bot`.
+  - Рантайм в `/opt/vk_auto_bot` (vkbot), не в `/root/...` (700, недоступно службе).
+  - Caddy: фрагмент в `/etc/caddy/conf.d/*.caddy`, в `Caddyfile` дописана строка
+    `import /etc/caddy/conf.d/*.caddy`; перед reload — `caddy validate` (не сломать
+    чужие сайты kwork/admin на :80/:443).
+  - Порт 8080 на хосте открыт (ufw нет, iptables ACCEPT) — гейт только в security
+    group cloud.ru (внешний, через SSH не настроить).
 - **Секреты-конфиг:** настройки заказчика (VK-токен/group_id/почта Sheets) — в
   таблице `app_settings`, НЕ в `.env`. Токен шифруется Fernet (`core/crypto.py`),
   мастер-ключ `SECRETS_KEY` в `.env` (генерить `scripts/gen_secrets_key.py`) —

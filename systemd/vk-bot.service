@@ -9,7 +9,10 @@ User=vkbot
 Group=vkbot
 WorkingDirectory=/opt/vk_auto_bot
 ExecStart=/opt/vk_auto_bot/.venv/bin/python -m app.bot.main
-Restart=always
+# on-failure (не always): без VK-токена бот штатно завершается (exit 0) и не уходит
+# в бесконечный цикл рестартов; реальный сбой (exit != 0) — перезапустит.
+# Токен задаётся в админке → после этого: systemctl restart vk-bot
+Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal

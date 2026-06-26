@@ -1,6 +1,7 @@
 vkbottle>=4.3,<5
-fastapi>=0.110
-uvicorn[standard]>=0.29
+fastapi==0.116.2
+starlette==0.48.0          # FastAPI 0.116.x тянет starlette<0.49; в starlette 1.x убрана старая сигнатура TemplateResponse(name, context) → пинуем
+uvicorn[standard]==0.35.0
 jinja2>=3.1
 python-multipart>=0.0.9
 itsdangerous>=2.1
