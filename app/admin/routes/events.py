@@ -4,7 +4,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -174,6 +174,20 @@ async def create_event_submit(
     event.google_sheet_url = _parse_optional_str(google_sheet_url)
     await session.commit()
     return RedirectResponse(url="/events", status_code=303)
+
+
+@router.get("/events/{event_id}/qr")
+async def event_qr(
+    event_id: int,
+    user: str = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    from fastapi import HTTPException
+
+    event = await session.get(Event, event_id)
+    if event is None or not event.qr_image_path or not os.path.exists(event.qr_image_path):
+        raise HTTPException(status_code=404, detail="QR-код не найден")
+    return FileResponse(event.qr_image_path)
 
 
 @router.get("/events/{event_id}/edit")

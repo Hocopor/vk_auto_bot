@@ -119,7 +119,17 @@
                 <p class="field-hint"><span class="badge badge-success"><span class="dot"></span>Загружен</span> — выберите новый файл для замены.</p>
                 {% endif %}
                 <input type="file" name="qr_file" accept="image/*" id="f-qr-file">
-                <img src="{% if event and event.qr_image_path %}/static/qr/{{ event.qr_image_path.split('/')[-1] }}{% endif %}" alt="QR-код" class="qr-preview{% if not event or not event.qr_image_path %} is-hidden{% endif %}" id="qr-preview">
+                <img src="{% if event and event.qr_image_path and event.id %}/events/{{ event.id }}/qr{% endif %}" alt="QR-код" class="qr-preview{% if not event or not event.qr_image_path %} is-hidden{% endif %}" id="qr-preview">
+            </div>
+
+            <div class="field">
+                <label class="check">
+                    <input type="checkbox" name="send_qr" {% if mode == 'create' or (event and event.send_qr) %}checked{% endif %}>
+                    <span>
+                        <span class="check-title">Прикреплять QR-код к инструкции</span>
+                        <span class="check-hint">Картинка с QR отправляется участнику в сообщении после кодового слова.</span>
+                    </span>
+                </label>
             </div>
 
             <div class="field">

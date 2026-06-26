@@ -277,6 +277,30 @@ async def test_create_event_via_post_has_send_need_contacts_false(client, maker)
         assert event.send_need_contacts is False
 
 
+async def test_new_event_form_has_send_qr_checkbox(client):
+    """Регресс: при реврайте фронта чекбокс send_qr выпал из формы, из-за чего
+    каждое новое/отредактированное мероприятие сохранялось с send_qr=False и бот
+    переставал слать QR. Форма обязана содержать поле send_qr."""
+    resp = await client.get("/events/new")
+    assert resp.status_code == 200
+    assert 'name="send_qr"' in resp.text
+
+
+async def test_create_event_with_send_qr(client, maker):
+    """send_qr из формы сохраняется в БД (True при отмеченном чекбоксе)."""
+    resp = await client.post(
+        "/events",
+        data=event_form_data(name="С QR", send_qr="on"),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        result = await session.execute(select(Event).where(Event.name == "С QR"))
+        event = result.scalars().one()
+        assert event.send_qr is True
+
+
 async def test_edit_event_google_sheet_url(client, maker):
     """Editing event updates google_sheet_url."""
     await client.post("/events", data=event_form_data(), follow_redirects=False)
