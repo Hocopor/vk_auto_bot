@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Добавить вручную — {{ get_admin_title() }}{% endblock %}
+
+{% block content %}
+<a href="/moderation" class="back-link">← Назад</a>
+
+<div class="page-head">
+    <div>
+        <h1>Добавить вручную</h1>
+    </div>
+</div>
+
+<div class="panel">
+    <form method="post" action="/moderation/manual" enctype="multipart/form-data" data-loading-text="Создаём…">
+        <div class="field">
+            <label for="f-event">Мероприятие</label>
+            <select id="f-event" name="event_id" required>
+                {% for e in events %}<option value="{{ e.id }}">{{ e.name }} (#{{ e.id }}){% if not e.is_active %} — остановлено{% endif %}</option>{% endfor %}
+            </select>
+        </div>
+
+        <div class="field-grid">
+            <div class="field">
+                <label for="f-vk-link">Ссылка ВК или id</label>
+                <input type="text" id="f-vk-link" name="vk_link" placeholder="https://vk.com/id123 или 123">
+            </div>
+            <div class="field">
+                <label for="f-provided-name">ФИО</label>
+                <input type="text" id="f-provided-name" name="provided_name" placeholder="Имя">
+            </div>
+            <div class="field">
+                <label for="f-phone">Телефон</label>
+                <input type="text" id="f-phone" name="phone" placeholder="Телефон">
+            </div>
+            <div class="field">
+                <label for="f-public-name">Публичное имя</label>
+                <input type="text" id="f-public-name" name="public_name" placeholder="Имя для таблицы">
+                <p class="muted">Уходит в публичную таблицу — только имя.</p>
+            </div>
+            <div class="field">
+                <label for="f-amount">Сумма</label>
+                <input type="text" id="f-amount" name="amount" placeholder="Сумма">
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="f-receipt">Файл чека (необязательно)</label>
+            <input type="file" id="f-receipt" name="receipt" accept="image/*,application/pdf">
+        </div>
+
+        <p class="muted">Если ссылка не указана или это короткое имя — будет создан псевдоучастник.</p>
+
+        <button type="submit" class="btn btn-success">Создать</button>
+    </form>
+</div>
+{% endblock %}

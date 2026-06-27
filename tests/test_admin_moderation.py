@@ -1,3 +1,4 @@
+import os
 from decimal import Decimal
 
 import httpx
@@ -364,3 +365,141 @@ async def test_vk_chat_link_absent_when_group_id_not_set(client, maker):
     assert resp_detail.status_code == 200
     assert "gim" not in resp_detail.text
     assert "write-" not in resp_detail.text
+
+
+async def test_manual_form_renders(client, maker):
+    event_id = await make_event(maker, name="Розыгрыш Х")
+
+    resp = await client.get("/moderation/manual")
+    assert resp.status_code == 200
+    assert 'name="event_id"' in resp.text
+    assert "Розыгрыш Х" in resp.text or f"#{event_id}" in resp.text
+
+
+async def test_manual_create_with_vk_link(client, maker):
+    event_id = await make_event(maker)
+
+    resp = await client.post(
+        "/moderation/manual",
+        data={
+            "event_id": event_id,
+            "vk_link": "https://vk.com/id555",
+            "provided_name": "Иван Петров",
+            "phone": "+79990001122",
+            "public_name": "Иван",
+            "amount": "500",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        result = await session.execute(
+            select(Participant).where(Participant.vk_user_id == 555)
+        )
+        participant = result.scalar_one()
+        assert participant.public_name == "Иван"
+
+        result = await session.execute(
+            select(Purchase).where(Purchase.participant_id == participant.id)
+        )
+        purchase = result.scalar_one()
+        assert purchase.status == PurchaseStatus.manual_review
+        assert purchase.amount == Decimal("500")
+        assert purchase.posters_count == 2
+
+
+async def test_manual_create_synthetic_id(client, maker):
+    event_id = await make_event(maker)
+
+    resp1 = await client.post(
+        "/moderation/manual",
+        data={"event_id": event_id, "provided_name": "Первый Псевдоучастник"},
+        follow_redirects=False,
+    )
+    assert resp1.status_code == 303
+
+    resp2 = await client.post(
+        "/moderation/manual",
+        data={"event_id": event_id, "provided_name": "Второй Псевдоучастник"},
+        follow_redirects=False,
+    )
+    assert resp2.status_code == 303
+
+    async with maker() as session:
+        result = await session.execute(
+            select(Participant).where(Participant.event_id == event_id)
+        )
+        participants = result.scalars().all()
+        vk_ids = sorted(p.vk_user_id for p in participants)
+        assert len(vk_ids) == 2
+        assert all(v < 0 for v in vk_ids)
+        assert vk_ids[0] != vk_ids[1]
+        assert vk_ids == [-2, -1]
+
+
+async def test_manual_create_with_receipt_file(client, maker):
+    event_id = await make_event(maker)
+
+    resp = await client.post(
+        "/moderation/manual",
+        data={
+            "event_id": event_id,
+            "vk_link": "https://vk.com/id556",
+            "provided_name": "Чек Тестов",
+            "amount": "500",
+        },
+        files={"receipt": ("check.jpg", b"\xff\xd8fakejpeg", "image/jpeg")},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    file_path = None
+    async with maker() as session:
+        result = await session.execute(
+            select(Participant).where(Participant.vk_user_id == 556)
+        )
+        participant = result.scalar_one()
+        result = await session.execute(
+            select(Purchase).where(Purchase.participant_id == participant.id)
+        )
+        purchase = result.scalar_one()
+        file_path = purchase.receipt_file_path
+        assert file_path is not None
+        assert os.path.exists(file_path)
+
+    if file_path and os.path.exists(file_path):
+        os.remove(file_path)
+
+
+async def test_manual_create_unknown_event_404(client, maker):
+    resp = await client.post(
+        "/moderation/manual",
+        data={"event_id": 99999, "provided_name": "Никто"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 404
+
+
+async def test_manual_then_approve(client, maker):
+    event_id = await make_event(maker, price=Decimal("250"))
+
+    resp = await client.post(
+        "/moderation/manual",
+        data={
+            "event_id": event_id,
+            "vk_link": "https://vk.com/id557",
+            "provided_name": "Подтверждён Будет",
+            "amount": "500",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    purchase_id = int(resp.headers["location"].rstrip("/").split("/")[-1])
+
+    resp_approve = await client.post(f"/moderation/{purchase_id}/approve", follow_redirects=False)
+    assert resp_approve.status_code == 303
+
+    async with maker() as session:
+        purchase = await session.get(Purchase, purchase_id)
+        assert purchase.status == PurchaseStatus.approved

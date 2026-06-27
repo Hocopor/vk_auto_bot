@@ -1,6 +1,6 @@
 import re
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import Participant
@@ -100,6 +100,30 @@ def resolve_public_name(p) -> str | None:
     if p.vk_name and p.vk_name.strip():
         return p.vk_name.strip()
     return None
+
+
+def parse_vk_user_id(link: str) -> int | None:
+    """Числовой vk id из ссылки/строки. None если не извлечь (screen name)."""
+    if not link:
+        return None
+    s = link.strip()
+    if re.fullmatch(r"-?\d+", s):
+        return int(s)
+    m = re.search(r"vk\.com/id(\d+)", s)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+async def next_synthetic_vk_id(session: AsyncSession, event_id: int) -> int:
+    """Уникальный отрицательный vk id для псевдоучастника в рамках события."""
+    result = await session.execute(
+        select(func.min(Participant.vk_user_id)).where(Participant.event_id == event_id)
+    )
+    current_min = result.scalar_one_or_none()
+    if current_min is not None and current_min < 0:
+        return current_min - 1
+    return -1
 
 
 def looks_like_contacts(text: str) -> bool:

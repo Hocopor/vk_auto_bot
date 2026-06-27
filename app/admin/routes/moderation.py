@@ -1,7 +1,8 @@
+import hashlib
 import os
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,9 +10,16 @@ from sqlalchemy.orm import selectinload
 
 from app.admin.deps import get_session, require_login
 from app.admin.templating import templates
-from app.core.models import Participant, PosterNumber, Purchase, PurchaseStatus
+from app.core.config import settings
+from app.core.models import Event, Participant, PosterNumber, Purchase, PurchaseStatus
 from app.core.services import app_settings
-from app.core.services.participants import resolve_public_name
+from app.core.services.numbers import count_posters
+from app.core.services.participants import (
+    next_synthetic_vk_id,
+    parse_vk_user_id,
+    resolve_public_name,
+    upsert_participant,
+)
 from app.core.services.purchases import approve, can_approve, reject, set_amount
 
 router = APIRouter()
@@ -105,6 +113,92 @@ async def moderation_list(
             "vk_group_id": vk_group_id,
         },
     )
+
+
+@router.get("/moderation/manual")
+async def moderation_manual_form(
+    request: Request,
+    user: str = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Event).order_by(Event.created_at.desc()))
+    events = result.scalars().all()
+    return templates.TemplateResponse(
+        "manual_add.html",
+        {"request": request, "user": user, "events": events},
+    )
+
+
+@router.post("/moderation/manual")
+async def moderation_manual_create(
+    request: Request,
+    event_id: int = Form(...),
+    vk_link: str = Form(""),
+    provided_name: str = Form(""),
+    phone: str = Form(""),
+    public_name: str = Form(""),
+    amount: str = Form(""),
+    receipt: UploadFile | None = File(None),
+    user: str = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+
+    parsed_id = parse_vk_user_id(vk_link)
+    if parsed_id is not None:
+        vk_user_id = parsed_id
+    else:
+        vk_user_id = await next_synthetic_vk_id(session, event_id)
+
+    link_value = vk_link.strip() or (f"https://vk.com/id{parsed_id}" if parsed_id else None)
+
+    participant = await upsert_participant(
+        session, event_id, vk_user_id,
+        vk_link=link_value,
+        provided_name=provided_name.strip() or None,
+        phone=phone.strip() or None,
+    )
+    participant.public_name = public_name.strip() or None
+
+    amount_val = None
+    if amount.strip():
+        try:
+            amount_val = Decimal(amount.strip())
+        except InvalidOperation:
+            amount_val = None
+    posters = count_posters(amount_val, event.price) if amount_val is not None else 0
+
+    file_path = None
+    receipt_hash = None
+    if receipt is not None and receipt.filename:
+        content = await receipt.read()
+        if content:
+            receipt_hash = hashlib.sha256(content).hexdigest()
+            ext = receipt.filename.rsplit(".", 1)[-1].lower() if "." in receipt.filename else "jpg"
+            if not (ext.isalnum() and len(ext) <= 5):
+                ext = "jpg"
+            os.makedirs(settings.receipts_dir, exist_ok=True)
+            file_name = f"{event_id}_{vk_user_id}_{receipt_hash[:12]}.{ext}"
+            file_path = os.path.join(settings.receipts_dir, file_name)
+            with open(file_path, "wb") as f:
+                f.write(content)
+
+    purchase = Purchase(
+        event_id=event_id,
+        participant_id=participant.id,
+        receipt_file_path=file_path,
+        receipt_hash=receipt_hash,
+        amount=amount_val,
+        posters_count=posters,
+        status=PurchaseStatus.manual_review,
+        moderated_by=None,
+    )
+    session.add(purchase)
+    await session.commit()
+    await session.refresh(purchase)
+    return RedirectResponse(url=f"/moderation/{purchase.id}", status_code=303)
 
 
 @router.get("/moderation/{purchase_id}")
