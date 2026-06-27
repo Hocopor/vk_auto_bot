@@ -2,7 +2,52 @@
 
 ## Текущая точка
 
-- **2026-06-27. ЭТАП 8.3 (Авто-подтверждение + abuse + дата чека) — КОД+ТЕСТЫ ГОТОВЫ, ДЕПЛОЙ ЖДЁТ.**
+- **2026-06-27. ЭТАП 8.4 (FSM-диалог бота: ФИО+телефон после чека) — КОД+ТЕСТЫ+E2E ГОТОВЫ.**
+  edit.md #4, группа P2. Проектировал ОРКЕСТРАТОР, код писал coder-сабагент (TDD).
+  - **Флоу:** keyword → msg_instruction(+QR) [stage=awaiting_receipt] → ЧЕК →
+    msg_receipt_received (теперь просит ФИО+телефон) [stage=awaiting_contacts] → текст
+    ФИО+тел → **новое** msg_contacts_saved («данные приняты») [stage=done] → (после
+    модерации) msg_after_payment с номерами (воркер, без изменений).
+  - **Реализация:**
+    - Модели: `BotDialogState.stage` (Text, server_default `'awaiting_receipt'`);
+      `Participant.public_name` (админ-override) + `Participant.vk_first_name` (из VK
+      users.get); `Event.msg_contacts_saved` + `Event.send_contacts_saved`. Миграция
+      **`0007_dialog_fsm_contacts`** (down=0006, 5 колонок).
+    - `dialog.py`: `set_dialog(stage=...)` (переключение на новое кодовое слово сбрасывает
+      стадию), новые `get_dialog`, `set_stage`; `process_receipt(vk_first_name=...)`.
+    - `handlers.py`: РОУТИНГ по стадии в `_handle_message` — вложение→чек (ставит
+      awaiting_contacts); иначе текст матчит активный keyword→`_handle_keyword`
+      (переключение даже из awaiting_contacts, сброс стадии); иначе→`_handle_contacts`
+      (только в awaiting_contacts И `looks_like_contacts` И событие открыто → парсит
+      ФИО+тел, upsert, msg_contacts_saved, stage=done; мусор → молчит, стадию не теряет).
+      `_get_vk_identity` теперь отдаёт и `vk_first_name`.
+    - `participants.py`: `upsert_participant(vk_first_name=...)`; `resolve_public_name(p)`
+      = public_name > vk_first_name > 1-й токен provided_name > vk_name; `looks_like_contacts`
+      (есть телефон ИЛИ ≥2 слов).
+    - Публичное имя через резолвер: `public_table.collect_records`,
+      `sheets.sync.collect_approved_records`, `worker` ctx `name` — теперь
+      `resolve_public_name` (публичное = VK first_name; полное ФИО (provided_name) остаётся
+      в карточке/модерации).
+    - `defaults.py`: переформулирован `DEFAULT_MSG_RECEIPT_RECEIVED` (просит ФИО+тел) +
+      новый `DEFAULT_MSG_CONTACTS_SAVED`. Форма события: новый msg-блок «Данные приняты»
+      (тумблер `send_contacts_saved` + textarea `msg_contacts_saved`). routes/services
+      events — поля проброшены в create/update.
+  - **РЕЗУЛЬТАТ:** pytest **238 passed, 2 skipped** (было 213/2; +25 тестов FSM/резолвер/
+    форма; адаптированы test_handlers_gating/test_admin_events/test_e2e под новые сигнатуры).
+    **e2e** agent-browser на локальной SQLite-QA: форма `/events/new` рендерит новый блок
+    «Данные приняты» (поля `send_contacts_saved` INPUT + `msg_contacts_saved` TEXTAREA),
+    msg_receipt_received переформулирован (скрин `data/screens/8_4_contacts_saved_form.png`).
+    **ДЕПЛОЙ:** см. ниже (требует `alembic upgrade head` — миграция 0007).
+- **2026-06-27. ЭТАП 8.3 — ЗАВЕРШЁН И ЗАДЕПЛОЕН** (коммиты `b891fdd`+`310efda`).
+  Деплой выполнен в этой сессии: `git pull --ff-only` /opt+/root → `310efda`; **`alembic
+  upgrade head` применил миграцию 0006** (`0005_qr_attachment` → `0006_receipt_date_abuse
+  (head)`, 3 колонки в purchases: receipt_date/receipt_signature/needs_attention) →
+  `restart admin-web vk-bot` (оба active) → smoke `:8080/login=200` (первый curl поймал
+  транзиентный 502 от Caddy — admin стартует ~5с, после повторного 200). vk-bot стартовал
+  чисто: supervisor + BotPolling + Worker. **NB:** в логе vk-bot продолжается спам
+  `Numbers exhausted for event 7: requested 6, available 5` — это косяк overselling (Фаза 9),
+  не 8.3.
+- **2026-06-27. ЭТАП 8.3 (Авто-подтверждение + abuse + дата чека) — КОД+ТЕСТЫ.**
   P1, ядро платёжного конвейера. edit.md #3, #12. **Делал ОРКЕСТРАТОР РУКАМИ** — сабагенты
   (coder) легли по лимиту сессии Anthropic; реализация по уже готовому ТЗ оркестратора.
   - **Решения заказчика (AskUserQuestion 2026-06-27) ДО кода:** (1) окно свежести чека =
@@ -422,17 +467,15 @@
 
 ## Следующий шаг
 
-- **СНАЧАЛА: ЗАДЕПЛОИТЬ 8.3** (когда будет `SSH_PASS` в env). Код запушен в GitHub (коммит
-  `b891fdd`). Шаги:
-  `git pull` /opt+/root → **`alembic upgrade head` (миграция 0006 — 3 колонки в purchases,
-  ОБЯЗАТЕЛЬНО)** → restart admin-web+vk-bot → smoke :8080/login=200. Коннект — paramiko
-  `scripts/_ssh_run.py`, пароль в env `SSH_PASS` (в код НЕ писать).
-- **ЭТАП 8.4 / группа P2 — Новый сценарий бота: запрос ФИО+телефон после чека (НОВАЯ СЕССИЯ).**
-  По плану `PLAN.md → Фаза 8, 8.4` (edit.md #4). FSM-стадии диалога (awaiting_receipt →
-  awaiting_contacts → done), роутинг сообщений по стадии, ФИО vs публичное имя
-  (`public_name`/`vk_first_name`), тумблер+текст `msg_contacts_saved`. Скилы: TDD. Агент:
-  coder (sonnet); таблицу переходов FSM спроектировать оркестратору ДО кода.
-- **ЭТАП 8.3 (Авто-подтверждение + abuse) — КОД ГОТОВ, 213 passed, ДЕПЛОЙ ЖДЁТ SSH_PASS.**
+- **ЭТАП 8.5 / группа P3 — Объединить «Отклонить»/«Отозвать» в одну кнопку (НОВАЯ СЕССИЯ).**
+  По плану `PLAN.md → Фаза 8, 8.5` (edit.md #5). reject теперь = освобождает номера
+  (free_numbers) + статус rejected + numbers_assigned=False (то, что раньше делал revoke).
+  Убрать кнопку/роут revoke из UI. Пересекается с **косяком статусной машины модерации**
+  (память `bug-moderation-status-churn-no-delivery.md`) — возможно решать вместе.
+  Скилы: TDD. Агент: coder (sonnet).
+- **ЭТАП 8.4 (FSM-диалог: ФИО+телефон) — КОД+ТЕСТЫ+E2E ГОТОВЫ, 238 passed. ДЕПЛОЙ:** этой
+  сессией будет запушен и задеплоен (миграция **0007** — обязателен `alembic upgrade head`).
+- **ЭТАП 8.3 (Авто-подтверждение + abuse) — ЗАВЕРШЁН И ЗАДЕПЛОЕН** (`310efda`).
 - **ЭТАП 8.2 (PDF-чеки) — ЗАВЕРШЁН И ЗАДЕПЛОЕН** (`0f57d5b`).
 - **ВАЖНО — после P1 (8.2, 8.3) чинить НОВЫЙ КОСЯК модерации** (см. «Текущая точка» и
   память `bug-moderation-status-churn-no-delivery.md`): статусная машина модерации не
@@ -498,6 +541,14 @@
   (`timeutil.parse_local_datetime`), показывать обратно фильтром `localdt`. Иначе
   `is_event_open` (сравнивает с UTC now) глушит бота на разницу часовых поясов.
 
+- **8.4 резолвер публичного имени (`resolve_public_name`):** публичная таблица/Google Sheet
+  теперь показывают VK first_name (`vk_first_name`), а не полное ФИО (`provided_name`).
+  Приоритет: `public_name` (админ-override) > `vk_first_name` > 1-й токен `provided_name` >
+  `vk_name`. ГРАБЛИ для участников, созданных ДО миграции 0007 (у них `vk_first_name` пуст):
+  до следующего взаимодействия с ботом (когда бот захватит `vk_first_name` через VK
+  `users.get`) в таблице покажется 1-й токен старого ФИО. Не деструктивно, но при сравнении
+  со старыми записями заказчик может заметить смену имени. Полное ФИО остаётся в карточке
+  модерации (`provided_name`).
 - Статичный QR один на всех → автосверку платежа с конкретным человеком через банк
   делать НЕ будем; проверка = OCR суммы/реквизитов + ручная модерация.
 - Бот и админка общаются только через БД; подтверждение чека → воркер бота

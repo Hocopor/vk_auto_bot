@@ -106,11 +106,13 @@ async def create_event_submit(
     msg_after_payment: str = Form(""),
     msg_receipt_received: str = Form(""),
     msg_need_contacts: str = Form(""),
+    msg_contacts_saved: str = Form(""),
     send_instruction: str | None = Form(None),
     send_qr: str | None = Form(None),
     send_receipt_received: str | None = Form(None),
     send_after_payment: str | None = Form(None),
     send_need_contacts: str | None = Form(None),
+    send_contacts_saved: str | None = Form(None),
     qr_file: UploadFile | None = None,
     google_sheet_url: str = Form(""),
 ):
@@ -129,11 +131,13 @@ async def create_event_submit(
         "msg_after_payment": msg_after_payment,
         "msg_receipt_received": msg_receipt_received,
         "msg_need_contacts": msg_need_contacts,
+        "msg_contacts_saved": msg_contacts_saved,
         "send_instruction": bool(send_instruction),
         "send_qr": bool(send_qr),
         "send_receipt_received": bool(send_receipt_received),
         "send_after_payment": bool(send_after_payment),
         "send_need_contacts": bool(send_need_contacts),
+        "send_contacts_saved": bool(send_contacts_saved),
         "google_sheet_url": google_sheet_url,
     }
 
@@ -192,11 +196,13 @@ async def create_event_submit(
         msg_after_payment=_parse_optional_str(msg_after_payment),
         msg_receipt_received=_parse_optional_str(msg_receipt_received),
         msg_need_contacts=_parse_optional_str(msg_need_contacts),
+        msg_contacts_saved=_parse_optional_str(msg_contacts_saved),
         send_instruction=bool(send_instruction),
         send_qr=bool(send_qr),
         send_receipt_received=bool(send_receipt_received),
         send_after_payment=bool(send_after_payment),
         send_need_contacts=bool(send_need_contacts),
+        send_contacts_saved=bool(send_contacts_saved),
     )
 
     event.google_sheet_url = _parse_optional_str(google_sheet_url)
@@ -285,11 +291,13 @@ async def update_event_submit(
     msg_after_payment: str = Form(""),
     msg_receipt_received: str = Form(""),
     msg_need_contacts: str = Form(""),
+    msg_contacts_saved: str = Form(""),
     send_instruction: str | None = Form(None),
     send_qr: str | None = Form(None),
     send_receipt_received: str | None = Form(None),
     send_after_payment: str | None = Form(None),
     send_need_contacts: str | None = Form(None),
+    send_contacts_saved: str | None = Form(None),
     qr_file: UploadFile | None = None,
     google_sheet_url: str = Form(""),
 ):
@@ -315,12 +323,14 @@ async def update_event_submit(
         "msg_after_payment": msg_after_payment,
         "msg_receipt_received": msg_receipt_received,
         "msg_need_contacts": msg_need_contacts,
+        "msg_contacts_saved": msg_contacts_saved,
         "qr_image_path": event.qr_image_path,
         "send_instruction": bool(send_instruction),
         "send_qr": bool(send_qr),
         "send_receipt_received": bool(send_receipt_received),
         "send_after_payment": bool(send_after_payment),
         "send_need_contacts": bool(send_need_contacts),
+        "send_contacts_saved": bool(send_contacts_saved),
         "google_sheet_url": google_sheet_url,
     }
 
@@ -375,11 +385,13 @@ async def update_event_submit(
     event.msg_after_payment = msg_after_payment or DEFAULT_TEXTS["msg_after_payment"]
     event.msg_receipt_received = msg_receipt_received or DEFAULT_TEXTS["msg_receipt_received"]
     event.msg_need_contacts = msg_need_contacts or DEFAULT_TEXTS["msg_need_contacts"]
+    event.msg_contacts_saved = msg_contacts_saved or DEFAULT_TEXTS["msg_contacts_saved"]
     event.send_instruction = bool(send_instruction)
     event.send_qr = bool(send_qr)
     event.send_receipt_received = bool(send_receipt_received)
     event.send_after_payment = bool(send_after_payment)
     event.send_need_contacts = bool(send_need_contacts)
+    event.send_contacts_saved = bool(send_contacts_saved)
     event.google_sheet_url = _parse_optional_str(google_sheet_url)
 
     new_qr_path = await _save_qr_file(qr_file)

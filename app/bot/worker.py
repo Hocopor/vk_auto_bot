@@ -12,6 +12,7 @@ from app.core.models import Purchase, PurchaseStatus
 from app.core.placeholders import format_numbers, render
 from app.core.services import public_table
 from app.core.services.numbers import NumbersExhausted, assign_unique, count_posters
+from app.core.services.participants import resolve_public_name
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ async def process_pending(
         await session.flush()
 
         ctx = {
-            "name": participant.provided_name or "",
+            "name": resolve_public_name(participant) or "",
             "numbers": format_numbers(numbers),
             "count": len(numbers),
             "price": event.price,

@@ -51,6 +51,7 @@ async def upsert_participant(
     vk_link: str | None = None,
     provided_name: str | None = None,
     phone: str | None = None,
+    vk_first_name: str | None = None,
 ) -> Participant:
     """Создаёт или обновляет участника по (event_id, vk_user_id)."""
     result = await session.execute(
@@ -69,6 +70,7 @@ async def upsert_participant(
             vk_link=vk_link,
             provided_name=provided_name if provided_name else None,
             phone=phone if phone else None,
+            vk_first_name=vk_first_name,
         )
         session.add(participant)
     else:
@@ -80,6 +82,31 @@ async def upsert_participant(
             participant.provided_name = provided_name
         if phone is not None and phone:
             participant.phone = phone
+        if vk_first_name is not None and vk_first_name:
+            participant.vk_first_name = vk_first_name
 
     await session.flush()
     return participant
+
+
+def resolve_public_name(p) -> str | None:
+    """Имя для публичной таблицы: админ-override → VK first_name → первый токен ФИО → vk_name."""
+    if p.public_name and p.public_name.strip():
+        return p.public_name.strip()
+    if p.vk_first_name and p.vk_first_name.strip():
+        return p.vk_first_name.strip()
+    if p.provided_name and p.provided_name.strip():
+        return p.provided_name.strip().split()[0]
+    if p.vk_name and p.vk_name.strip():
+        return p.vk_name.strip()
+    return None
+
+
+def looks_like_contacts(text: str) -> bool:
+    """Похоже ли сообщение на ФИО+телефон: есть телефон ИЛИ >=2 слов."""
+    if not text:
+        return False
+    if parse_phone(text):
+        return True
+    words = [w for w in _WS_RE.split(text.strip()) if w]
+    return len(words) >= 2

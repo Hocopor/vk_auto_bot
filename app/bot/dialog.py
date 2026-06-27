@@ -72,18 +72,37 @@ async def find_matching_event(
     return None
 
 
-async def set_dialog(session: AsyncSession, vk_user_id: int, event_id: int) -> None:
+async def set_dialog(
+    session: AsyncSession, vk_user_id: int, event_id: int, stage: str = "awaiting_receipt"
+) -> None:
     """Устанавливает/обновляет состояние диалога пользователя (на какое событие он отвечает)."""
     result = await session.execute(
         select(BotDialogState).where(BotDialogState.vk_user_id == vk_user_id)
     )
     state = result.scalar_one_or_none()
     if state is None:
-        state = BotDialogState(vk_user_id=vk_user_id, event_id=event_id)
+        state = BotDialogState(vk_user_id=vk_user_id, event_id=event_id, stage=stage)
         session.add(state)
     else:
         state.event_id = event_id
+        state.stage = stage
     await session.flush()
+
+
+async def get_dialog(session: AsyncSession, vk_user_id: int) -> BotDialogState | None:
+    """Возвращает объект BotDialogState пользователя, либо None."""
+    result = await session.execute(
+        select(BotDialogState).where(BotDialogState.vk_user_id == vk_user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def set_stage(session: AsyncSession, vk_user_id: int, stage: str) -> None:
+    """Меняет стадию диалога, если состояние существует."""
+    state = await get_dialog(session, vk_user_id)
+    if state is not None:
+        state.stage = stage
+        await session.flush()
 
 
 async def get_dialog_event_id(session: AsyncSession, vk_user_id: int) -> int | None:
@@ -143,6 +162,7 @@ async def process_receipt(
     vk_user_id: int,
     vk_name: str | None = None,
     vk_link: str | None = None,
+    vk_first_name: str | None = None,
     message_text: str = "",
     receipt_file_path: str | None,
     receipt_hash: str | None,
@@ -165,6 +185,7 @@ async def process_receipt(
         vk_link=vk_link,
         provided_name=name,
         phone=phone,
+        vk_first_name=vk_first_name,
     )
 
     purchase = Purchase(

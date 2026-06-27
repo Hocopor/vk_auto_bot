@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 import aiohttp
 from vkbottle import PhotoMessageUploader
@@ -11,6 +11,7 @@ from vkbottle.bot import Bot, Message
 from app.bot import dialog
 from app.core.config import settings
 from app.core.db import async_session_maker
+from app.core.models import Event
 from app.core.placeholders import render
 from app.core.services import public_table
 from app.core.services.participants import upsert_participant
@@ -81,19 +82,21 @@ async def _build_ctx(event, numbers=None) -> dict:
     return ctx
 
 
-async def _get_vk_identity(message: Message) -> tuple[str | None, str | None]:
+async def _get_vk_identity(message: Message) -> tuple[str | None, str | None, str | None]:
     """Пытается получить имя/ссылку пользователя ВК. Не критично при ошибке."""
     user_id = message.from_id
     vk_name = None
+    vk_first_name = None
     vk_link = f"https://vk.com/id{user_id}"
     try:
         users = await message.ctx_api.users.get(user_ids=[user_id])
         if users:
             u = users[0]
             vk_name = f"{u.first_name} {u.last_name}"
+            vk_first_name = u.first_name
     except Exception:
         logger.exception("Failed to fetch VK user info for user_id=%s", user_id)
-    return vk_name, vk_link
+    return vk_name, vk_link, vk_first_name
 
 
 def register_handlers(bot: Bot, upload_api=None) -> None:
@@ -113,15 +116,23 @@ def register_handlers(bot: Bot, upload_api=None) -> None:
 
 async def _handle_message(bot: Bot, message: Message, upload_api=None) -> None:
     user_id = message.from_id
-    vk_name, vk_link = await _get_vk_identity(message)
+    vk_name, vk_link, vk_first_name = await _get_vk_identity(message)
 
     async with async_session_maker() as session:
         attachment_info = await _extract_receipt_attachment(message)
-
         if attachment_info is not None:
-            await _handle_receipt(bot, message, session, user_id, vk_name, vk_link, attachment_info)
+            await _handle_receipt(
+                bot, message, session, user_id, vk_name, vk_link, vk_first_name, attachment_info
+            )
         else:
-            await _handle_keyword(bot, message, session, user_id, vk_name, vk_link, upload_api)
+            text = message.text or ""
+            event = await dialog.find_matching_event(session, text)
+            if event is not None:
+                await _handle_keyword(
+                    bot, message, session, user_id, vk_name, vk_link, vk_first_name, event, upload_api
+                )
+            else:
+                await _handle_contacts(bot, message, session, user_id, vk_first_name)
 
         await session.commit()
 
@@ -133,6 +144,7 @@ async def _handle_receipt(
     user_id: int,
     vk_name: str | None,
     vk_link: str | None,
+    vk_first_name: str | None,
     attachment_info: tuple[str, str],
 ) -> None:
     event = await dialog.resolve_event_for_receipt(session, user_id)
@@ -173,6 +185,7 @@ async def _handle_receipt(
         vk_user_id=user_id,
         vk_name=vk_name,
         vk_link=vk_link,
+        vk_first_name=vk_first_name,
         message_text=message.text or "",
         receipt_file_path=file_path,
         receipt_hash=receipt_hash,
@@ -189,6 +202,8 @@ async def _handle_receipt(
         await message.answer(render(event.msg_receipt_received, ctx))
     # Присвоение номеров и финальное уведомление — отдельный воркер (этап 2.7).
     _ = purchase
+
+    await dialog.set_stage(session, user_id, "awaiting_contacts")
 
 
 async def resolve_qr_attachment(
@@ -235,13 +250,13 @@ async def _handle_keyword(
     user_id: int,
     vk_name: str | None,
     vk_link: str | None,
+    vk_first_name: str | None,
+    event: Event,
     upload_api=None,
 ) -> None:
-    event = await dialog.find_matching_event(session, message.text or "")
-    if event is None:
-        return  # ни одно событие не подошло — бот молчит
-
-    await upsert_participant(session, event.id, user_id, vk_name=vk_name, vk_link=vk_link)
+    await upsert_participant(
+        session, event.id, user_id, vk_name=vk_name, vk_link=vk_link, vk_first_name=vk_first_name
+    )
     await dialog.set_dialog(session, user_id, event.id)
 
     text = render(event.msg_instruction, await _build_ctx(event)) if event.send_instruction else ""
@@ -250,3 +265,26 @@ async def _handle_keyword(
 
     if text or attachment:
         await message.answer(text, attachment=attachment)
+
+
+async def _handle_contacts(bot: Bot, message: Message, session, user_id: int, vk_first_name: str | None) -> None:
+    """Ветка приёма ФИО+телефона в стадии awaiting_contacts. Иначе — молчит, стадию не теряет."""
+    from app.core.services.participants import looks_like_contacts, parse_name_and_phone
+
+    state = await dialog.get_dialog(session, user_id)
+    if state is None or state.stage != "awaiting_contacts":
+        return  # нет ожидания контактов — бот молчит
+    text = message.text or ""
+    if not looks_like_contacts(text):
+        return  # мусор — НЕ теряем стадию, молчим
+    event = await session.get(Event, state.event_id)
+    if event is None or not dialog.is_event_open(event, datetime.now(timezone.utc)):
+        return  # мероприятие остановлено/удалено — молчим
+    name, phone = parse_name_and_phone(text)
+    await upsert_participant(
+        session, event.id, user_id, provided_name=name, phone=phone, vk_first_name=vk_first_name
+    )
+    await dialog.set_stage(session, user_id, "done")
+    if event.send_contacts_saved and event.msg_contacts_saved:
+        ctx = await _build_ctx(event)
+        await message.answer(render(event.msg_contacts_saved, ctx))

@@ -205,7 +205,8 @@ async def test_full_flow_keyword_then_receipt_then_worker(maker, tmp_path, monke
         numbers = [r[0] for r in records]
         assert sorted(numbers) == sorted(nums)
         names = [r[1] for r in records]
-        assert all(n == "Тест Тестов" for n in names)
+        # resolve_public_name: без vk_first_name публичное имя — первый токен ФИО
+        assert all(n == "Тест" for n in names)
 
 
 # ── E2E 2: Публичная таблица через HTTP ──

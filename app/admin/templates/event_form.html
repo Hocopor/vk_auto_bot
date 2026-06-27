@@ -224,6 +224,23 @@
                 </div>
             </div>
 
+            {# 4. Данные приняты #}
+            <div class="msg-block">
+                <div class="msg-block-toggle">
+                    <label class="switch">
+                        <input type="checkbox" name="send_contacts_saved" {% if mode == 'create' or (event and event.send_contacts_saved) %}checked{% endif %}>
+                        <span class="track"></span>
+                    </label>
+                </div>
+                <div class="msg-block-content">
+                    <span class="msg-block-label">Данные приняты (ответ на ФИО+телефон)</span>
+                    {{ var_chips("msg_contacts_saved", all_tokens) }}
+                    <div class="field">
+                        <textarea name="msg_contacts_saved" rows="3">{{ event.msg_contacts_saved if event and event.msg_contacts_saved else defaults.msg_contacts_saved }}</textarea>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 

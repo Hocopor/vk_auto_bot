@@ -57,6 +57,7 @@ class Event(Base):
     msg_after_payment: Mapped[str] = mapped_column(Text, nullable=False, default="")
     msg_receipt_received: Mapped[str] = mapped_column(Text, nullable=False, default="")
     msg_need_contacts: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    msg_contacts_saved: Mapped[str] = mapped_column(Text, nullable=False, default="")
     qr_image_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     auto_confirm: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     send_instruction: Mapped[bool] = mapped_column(
@@ -72,6 +73,9 @@ class Event(Base):
         Boolean, nullable=False, default=True, server_default=text("true")
     )
     send_need_contacts: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    send_contacts_saved: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
     expected_recipient: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -108,6 +112,8 @@ class Participant(Base):
     vk_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     vk_link: Mapped[str | None] = mapped_column(Text, nullable=True)
     provided_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    public_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vk_first_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -204,6 +210,10 @@ class BotDialogState(Base):
     vk_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     event_id: Mapped[int] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    stage: Mapped[str] = mapped_column(
+        Text, nullable=False, default="awaiting_receipt",
+        server_default=text("'awaiting_receipt'"),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

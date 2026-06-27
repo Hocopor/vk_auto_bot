@@ -76,6 +76,7 @@ async def test_receipt_received_message_sent_when_enabled(session, tmp_path, mon
         user_id=555,
         vk_name="Иван",
         vk_link="https://vk.com/id555",
+        vk_first_name="Иван",
         attachment_info=("http://example.com/receipt.jpg", "jpg"),
     )
 
@@ -111,6 +112,7 @@ async def test_receipt_received_message_not_sent_when_disabled(session, tmp_path
         user_id=555,
         vk_name="Иван",
         vk_link="https://vk.com/id555",
+        vk_first_name="Иван",
         attachment_info=("http://example.com/receipt.jpg", "jpg"),
     )
 

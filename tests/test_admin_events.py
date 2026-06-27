@@ -62,6 +62,7 @@ def event_form_data(**overrides):
         "msg_after_payment": "",
         "msg_receipt_received": "",
         "msg_need_contacts": "",
+        "msg_contacts_saved": "",
         "google_sheet_url": "",
     }
     data.update(overrides)
@@ -87,6 +88,7 @@ async def test_create_event(client, maker):
         assert event.msg_after_payment
         assert event.msg_receipt_received
         assert event.msg_need_contacts
+        assert event.msg_contacts_saved
 
 
 async def test_list_events(client):
@@ -394,3 +396,32 @@ async def test_update_same_event_keeps_keyword_ok(client, maker):
     async with maker() as session:
         updated = await session.get(Event, event_id)
         assert updated.name == "Переименовано"
+
+
+async def test_new_event_form_has_contacts_saved_fields(client):
+    """Форма должна содержать поля msg_contacts_saved и send_contacts_saved
+    (этап 8.4 — новое сообщение «данные приняты»)."""
+    resp = await client.get("/events/new")
+    assert resp.status_code == 200
+    assert 'name="send_contacts_saved"' in resp.text
+    assert 'name="msg_contacts_saved"' in resp.text
+
+
+async def test_create_event_with_contacts_saved_fields(client, maker):
+    """Создание мероприятия с явным текстом/тумблером msg_contacts_saved сохраняет их."""
+    resp = await client.post(
+        "/events",
+        data=event_form_data(
+            name="С контактами",
+            msg_contacts_saved="Спасибо за данные!",
+            send_contacts_saved="on",
+        ),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        result = await session.execute(select(Event).where(Event.name == "С контактами"))
+        event = result.scalars().one()
+        assert event.msg_contacts_saved == "Спасибо за данные!"
+        assert event.send_contacts_saved is True

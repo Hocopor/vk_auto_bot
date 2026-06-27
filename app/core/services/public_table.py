@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.models import PosterNumber, Purchase, PurchaseStatus
+from app.core.services.participants import resolve_public_name
 
 HEADER = ("Номер", "Имя", "Оплачено")
 PAID_MARK = "✅"
@@ -35,7 +36,7 @@ async def collect_records(
     result = await session.execute(stmt)
     poster_numbers = result.scalars().all()
     return [
-        (pn.number, pn.participant.provided_name if pn.participant else None)
+        (pn.number, resolve_public_name(pn.participant) if pn.participant else None)
         for pn in poster_numbers
     ]
 

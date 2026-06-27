@@ -26,12 +26,14 @@ async def create_event(
     msg_after_payment: str | None = None,
     msg_receipt_received: str | None = None,
     msg_need_contacts: str | None = None,
+    msg_contacts_saved: str | None = None,
     is_active: bool = True,
     send_instruction: bool = True,
     send_qr: bool = True,
     send_receipt_received: bool = True,
     send_after_payment: bool = True,
     send_need_contacts: bool = False,
+    send_contacts_saved: bool = True,
 ) -> Event:
     keyword = keyword.strip().lower()
 
@@ -49,6 +51,7 @@ async def create_event(
         msg_after_payment=msg_after_payment or DEFAULT_TEXTS["msg_after_payment"],
         msg_receipt_received=msg_receipt_received or DEFAULT_TEXTS["msg_receipt_received"],
         msg_need_contacts=msg_need_contacts or DEFAULT_TEXTS["msg_need_contacts"],
+        msg_contacts_saved=msg_contacts_saved or DEFAULT_TEXTS["msg_contacts_saved"],
         qr_image_path=qr_image_path,
         auto_confirm=auto_confirm,
         expected_recipient=expected_recipient,
@@ -58,6 +61,7 @@ async def create_event(
         send_receipt_received=send_receipt_received,
         send_after_payment=send_after_payment,
         send_need_contacts=send_need_contacts,
+        send_contacts_saved=send_contacts_saved,
     )
     session.add(event)
     await session.flush()
