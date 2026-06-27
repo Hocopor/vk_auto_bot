@@ -96,7 +96,7 @@
         <div class="field field--narrow">
             <label for="f-amount">Сумма</label>
             <div class="btn-row">
-                <input type="text" id="f-amount" name="amount" value="{{ p.amount if p.amount is not none else '' }}">
+                <input type="text" id="f-amount" name="amount" value="{{ p.amount if p.amount is not none else (p.ocr_amount if p.ocr_amount is not none else '') }}">
                 <button type="submit" class="btn btn-secondary btn-sm">Сохранить</button>
             </div>
         </div>
@@ -104,14 +104,19 @@
     <form method="post" action="/moderation/{{ p.id }}/contacts" data-loading-text="Сохранение…" class="mt-4">
         <div class="field-grid">
             <div class="field">
-                <label for="f-provided-name">Имя</label>
+                <label for="f-provided-name">ФИО (полное)</label>
                 <input type="text" id="f-provided-name" name="provided_name" value="{{ p.participant.provided_name if p.participant and p.participant.provided_name else '' }}" placeholder="Имя">
             </div>
             <div class="field">
                 <label for="f-phone">Телефон</label>
                 <input type="text" id="f-phone" name="phone" value="{{ p.participant.phone if p.participant and p.participant.phone else '' }}" placeholder="Телефон">
             </div>
+            <div class="field">
+                <label for="f-public-name">Публичное имя</label>
+                <input type="text" id="f-public-name" name="public_name" value="{{ public_name_value }}" placeholder="Имя для таблицы">
+            </div>
         </div>
+        <p class="muted">Публичное имя уходит в публичную таблицу — только имя, не ФИО.</p>
         <button type="submit" class="btn btn-secondary btn-sm mt-3">Сохранить контакты</button>
     </form>
 </div>

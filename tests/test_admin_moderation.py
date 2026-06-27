@@ -257,7 +257,7 @@ async def test_edit_contacts(client, maker):
 
     resp = await client.post(
         f"/moderation/{purchase_id}/contacts",
-        data={"provided_name": "Пётр", "phone": "+79990001122"},
+        data={"provided_name": "Пётр", "phone": "+79990001122", "public_name": "Ваня"},
         follow_redirects=False,
     )
     assert resp.status_code == 303
@@ -267,6 +267,48 @@ async def test_edit_contacts(client, maker):
         participant = await session.get(Participant, purchase.participant_id)
         assert participant.provided_name == "Пётр"
         assert participant.phone == "+79990001122"
+        assert participant.public_name == "Ваня"
+
+
+async def test_contacts_public_name_prefilled_from_resolver(client, maker):
+    event_id = await make_event(maker)
+    participant_id = await make_participant(
+        maker, event_id, vk_first_name="Иван", public_name=None
+    )
+    purchase_id = await make_purchase(maker, event_id, participant_id)
+
+    resp = await client.get(f"/moderation/{purchase_id}")
+    assert resp.status_code == 200
+    assert 'value="Иван"' in resp.text
+
+
+async def test_contacts_clear_public_name_resets(client, maker):
+    event_id = await make_event(maker)
+    participant_id = await make_participant(maker, event_id, public_name="X")
+    purchase_id = await make_purchase(maker, event_id, participant_id)
+
+    resp = await client.post(
+        f"/moderation/{purchase_id}/contacts",
+        data={"provided_name": "", "phone": "", "public_name": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        participant = await session.get(Participant, participant_id)
+        assert participant.public_name is None
+
+
+async def test_amount_prefilled_from_ocr(client, maker):
+    event_id = await make_event(maker)
+    participant_id = await make_participant(maker, event_id)
+    purchase_id = await make_purchase(
+        maker, event_id, participant_id, amount=None, ocr_amount=Decimal("750")
+    )
+
+    resp = await client.get(f"/moderation/{purchase_id}")
+    assert resp.status_code == 200
+    assert "750" in resp.text
 
 
 async def test_search_by_phone(client, maker):

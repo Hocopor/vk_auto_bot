@@ -11,6 +11,7 @@ from app.admin.deps import get_session, require_login
 from app.admin.templating import templates
 from app.core.models import Participant, PosterNumber, Purchase, PurchaseStatus
 from app.core.services import app_settings
+from app.core.services.participants import resolve_public_name
 from app.core.services.purchases import approve, can_approve, reject, set_amount
 
 router = APIRouter()
@@ -127,6 +128,8 @@ async def moderation_detail(
     partial = _is_partial(purchase)
     vk_group_id = await app_settings.get_setting(session, app_settings.KEY_VK_GROUP_ID)
     can_approve_flag = can_approve(purchase, purchase.event) if purchase.event else False
+    public_name_value = resolve_public_name(purchase.participant) if purchase.participant else ""
+    public_name_value = public_name_value or ""
 
     return templates.TemplateResponse(
         "purchase_detail.html",
@@ -138,6 +141,7 @@ async def moderation_detail(
             "vk_group_id": vk_group_id,
             "can_approve": can_approve_flag,
             "error": error,
+            "public_name_value": public_name_value,
         },
     )
 
@@ -224,6 +228,7 @@ async def moderation_set_contacts(
     purchase_id: int,
     provided_name: str = Form(""),
     phone: str = Form(""),
+    public_name: str = Form(""),
     user: str = Depends(require_login),
     session: AsyncSession = Depends(get_session),
 ):
@@ -237,5 +242,6 @@ async def moderation_set_contacts(
     participant = purchase.participant
     participant.provided_name = provided_name.strip() or None
     participant.phone = phone.strip() or None
+    participant.public_name = public_name.strip() or None
     await session.commit()
     return RedirectResponse(url=f"/moderation/{purchase_id}", status_code=303)
