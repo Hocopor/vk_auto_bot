@@ -10,58 +10,101 @@
 <div class="toolbar">
     <form method="get" action="/participants" data-no-loading>
         <select name="event_id" onchange="this.form.submit()">
-            <option value="">— выберите мероприятие —</option>
+            <option value="" {% if event_id is none %}selected{% endif %}>Все мероприятия</option>
             {% for e in events %}
-            <option value="{{ e.id }}" {% if event_id==e.id %}selected{% endif %}>{{ e.name }}</option>
+            <option value="{{ e.id }}" {% if event_id == e.id %}selected{% endif %}>{{ e.name }}{% if not e.is_active %} (остановлено){% endif %}</option>
             {% endfor %}
         </select>
     </form>
 </div>
 
-{% if event_id is none %}
-<div class="panel">
-    <div class="empty-state">
-        <div class="empty-icon">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-            </svg>
+{% if mode == "all" %}
+    {% if people %}
+    <div class="table-scroll">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="num">VK ID</th>
+                    <th>Имя ВК</th>
+                    <th>ФИО</th>
+                    <th>Телефон</th>
+                    <th>Мероприятия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in people %}
+                <tr class="row-link" onclick="location.href='/participants/vk/{{ row.vk_user_id }}'">
+                    <td class="num">{{ row.vk_user_id }}</td>
+                    <td>{{ row.vk_name or "" }}</td>
+                    <td>{{ row.provided_name or "" }}</td>
+                    <td>{{ row.phone or "" }}</td>
+                    <td>
+                        {% for ev in row.events %}{{ ev.name }}{% if not ev.is_active %} (ост.){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="panel">
+        <div class="empty-state">
+            <div class="empty-icon">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                </svg>
+            </div>
+            <h3>Пока нет участников</h3>
         </div>
-        <h3>Выберите мероприятие</h3>
     </div>
-</div>
-{% elif participants %}
-<div class="table-scroll">
-    <table class="table">
-        <thead>
-            <tr>
-                <th class="num">VK ID</th>
-                <th>Имя ВК</th>
-                <th>Имя</th>
-                <th>Телефон</th>
-                <th>Номера</th>
-                <th class="num">Кол-во</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for p in participants %}
-            {% set nums = numbers_by_participant.get(p.id, []) %}
-            <tr>
-                <td class="num">{{ p.vk_user_id }}</td>
-                <td>{{ p.vk_name or "" }}</td>
-                <td>{{ p.provided_name or "" }}</td>
-                <td class="num">{{ p.phone or "" }}</td>
-                <td class="num nowrap">{{ nums|join(", ") }}</td>
-                <td class="num">{{ nums|length }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% else %}
-<div class="panel">
-    <div class="empty-state">
-        <h3>Пока нет участников</h3>
+    {% endif %}
+{% elif mode == "event" %}
+    {% if participants %}
+    <div class="table-scroll">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="num">VK ID</th>
+                    <th>Имя ВК</th>
+                    <th>ФИО</th>
+                    <th>Телефон</th>
+                    <th>Номера</th>
+                    <th class="num">Кол-во</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in participants %}
+                {% set nums = numbers_by_participant.get(p.id, []) %}
+                <tr class="row-link" onclick="location.href='/participants/{{ p.id }}'">
+                    <td class="num">{{ p.vk_user_id }}</td>
+                    <td>{{ p.vk_name or "" }}</td>
+                    <td>{{ p.provided_name or "" }}</td>
+                    <td>{{ p.phone or "" }}</td>
+                    <td class="nowrap">{{ nums|join(", ") }}</td>
+                    <td class="num">{{ nums|length }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
+    {% else %}
+    <div class="panel">
+        <div class="empty-state">
+            <h3>Пока нет участников</h3>
+        </div>
+    </div>
+    {% endif %}
+{% endif %}
+
+{% if total > page_size %}
+<div class="pager">
+    {% if has_prev %}
+    <a class="btn btn-secondary btn-sm" href="/participants?page={{ page - 1 }}{% if event_id %}&event_id={{ event_id }}{% endif %}">← Назад</a>
+    {% endif %}
+    <span class="muted">Стр. {{ page }} · всего {{ total }}</span>
+    {% if has_next %}
+    <a class="btn btn-secondary btn-sm" href="/participants?page={{ page + 1 }}{% if event_id %}&event_id={{ event_id }}{% endif %}">Вперёд →</a>
+    {% endif %}
 </div>
 {% endif %}
 {% endblock %}

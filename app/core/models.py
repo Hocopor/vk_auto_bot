@@ -108,7 +108,7 @@ class Participant(Base):
     event_id: Mapped[int] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    vk_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    vk_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     vk_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     vk_link: Mapped[str | None] = mapped_column(Text, nullable=True)
     provided_name: Mapped[str | None] = mapped_column(Text, nullable=True)

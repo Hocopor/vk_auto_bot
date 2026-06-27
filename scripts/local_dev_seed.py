@@ -94,6 +94,33 @@ async def main() -> None:
         s.add_all([ev1, ev2])
         await s.flush()
 
+        # Аня участвует и во втором мероприятии (для проверки агрегации "Все мероприятия")
+        ann_ev2 = Participant(
+            event_id=ev2.id,
+            vk_user_id=100200301,
+            vk_name="Анна Соколова",
+            vk_link="https://vk.com/id100200301",
+            provided_name="Аня",
+            phone="+7 912 345-67-89",
+        )
+        s.add(ann_ev2)
+        await s.flush()
+
+        ann_purchase = Purchase(
+            event_id=ev2.id, participant_id=ann_ev2.id, amount=Decimal("500.00"),
+            ocr_amount=Decimal("500.00"), posters_count=1,
+            status=PurchaseStatus.approved, numbers_assigned=True,
+            moderated_by="admin",
+        )
+        s.add(ann_purchase)
+        await s.flush()
+
+        for n in (5, 9):
+            s.add(PosterNumber(
+                event_id=ev2.id, participant_id=ann_ev2.id,
+                purchase_id=ann_purchase.id, number=n,
+            ))
+
         # участники ev1
         people = [
             ("Аня", "+7 912 345-67-89", "Анна Соколова", 100200301),

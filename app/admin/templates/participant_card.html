@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Участник — {{ get_admin_title() }}{% endblock %}
+
+{% set status_map = {
+    "pending_ocr":    ("Распознаётся", "badge-neutral"),
+    "auto_confirmed": ("Авто", "badge-success"),
+    "manual_review":  ("Проверка", "badge-warning"),
+    "approved":       ("Одобрено", "badge-success"),
+    "rejected":       ("Отклонено", "badge-danger"),
+    "revoked":        ("Отозвано", "badge-neutral")
+} %}
+
+{% macro status_badge(value) %}
+    {% set s = status_map.get(value, (value, "badge-neutral")) %}
+    <span class="badge {{ s[1] }}"><span class="dot"></span>{{ s[0] }}</span>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Участник: {{ person.provided_name or person.vk_name or person.vk_user_id }}</h1>
+    </div>
+    <div class="page-head-actions">
+        <a href="/participants{% if back_event_id %}?event_id={{ back_event_id }}{% endif %}" class="btn btn-secondary btn-sm">← К списку</a>
+    </div>
+</div>
+
+<div class="panel">
+    <dl class="dl">
+        <div class="dl-row">
+            <dt>VK ID</dt>
+            <dd>{{ person.vk_user_id }}</dd>
+        </div>
+        <div class="dl-row">
+            <dt>Имя ВК</dt>
+            <dd>{{ person.vk_name or "—" }}</dd>
+        </div>
+        <div class="dl-row">
+            <dt>Ссылка ВК</dt>
+            <dd>
+                {% if person.vk_link %}
+                <a href="{{ person.vk_link }}" target="_blank">{{ person.vk_link }}</a>
+                {% elif vk_group_id and person.vk_user_id > 0 %}
+                <a href="https://vk.com/gim{{ vk_group_id }}?sel={{ person.vk_user_id }}" target="_blank">Написать в чат 💬</a>
+                {% else %}
+                —
+                {% endif %}
+            </dd>
+        </div>
+        <div class="dl-row">
+            <dt>ФИО</dt>
+            <dd>{{ person.provided_name or "—" }}</dd>
+        </div>
+        <div class="dl-row">
+            <dt>Телефон</dt>
+            <dd>{{ person.phone or "—" }}</dd>
+        </div>
+        <div class="dl-row">
+            <dt>Публичное имя</dt>
+            <dd>{{ person.public_name or "—" }}</dd>
+        </div>
+    </dl>
+</div>
+
+{% for group in person.groups %}
+<div class="panel">
+    <h2>{{ group.event.name }}{% if not group.event.is_active %} (остановлено){% endif %}</h2>
+
+    <p>
+        Билеты:
+        {% if group.numbers %}
+        {{ group.numbers|length }} шт.: {{ group.numbers|join(", ") }}
+        {% else %}
+        нет
+        {% endif %}
+    </p>
+
+    {% if group.purchases %}
+    <div class="table-scroll">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="num">#</th>
+                    <th class="num">Сумма</th>
+                    <th class="num">Билетов</th>
+                    <th>Статус</th>
+                    <th class="col-actions"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pu in group.purchases %}
+                <tr>
+                    <td class="num muted">#{{ pu.id }}</td>
+                    <td class="num">{{ pu.amount if pu.amount is not none else (pu.ocr_amount if pu.ocr_amount is not none else "—") }}</td>
+                    <td class="num">{{ pu.posters_count if pu.posters_count is not none else "—" }}</td>
+                    <td>{{ status_badge(pu.status.value) }}</td>
+                    <td class="col-actions">
+                        <a href="/moderation/{{ pu.id }}" class="btn btn-secondary btn-sm">Открыть</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted">Чеков нет</p>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

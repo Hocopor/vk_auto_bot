@@ -542,6 +542,7 @@ table.table tbody td {
 }
 table.table tbody tr:last-child td { border-bottom: 0; }
 table.table tbody tr:hover { background: var(--surface-2); }
+tr.row-link { cursor: pointer; }
 
 .num { font-variant-numeric: tabular-nums; }
 .nowrap { white-space: nowrap; }
@@ -581,6 +582,13 @@ td.col-actions .btn-row { justify-content: flex-end; gap: var(--sp-2); flex-wrap
 .dl .dl-row:last-child { border-bottom: 0; }
 .dl .dl-row dt { color: var(--text-muted); font-weight: 600; font-size: 0.9rem; margin: 0; }
 .dl .dl-row dd { margin: 0; font-weight: 600; }
+
+.pager {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    margin-top: var(--sp-5);
+}
 
 .receipt-img {
     max-width: 100%;
