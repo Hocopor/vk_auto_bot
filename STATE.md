@@ -422,7 +422,8 @@
 
 ## Следующий шаг
 
-- **СНАЧАЛА: ЗАДЕПЛОИТЬ 8.3** (когда будет `SSH_PASS` в env). Код запушен в GitHub. Шаги:
+- **СНАЧАЛА: ЗАДЕПЛОИТЬ 8.3** (когда будет `SSH_PASS` в env). Код запушен в GitHub (коммит
+  `b891fdd`). Шаги:
   `git pull` /opt+/root → **`alembic upgrade head` (миграция 0006 — 3 колонки в purchases,
   ОБЯЗАТЕЛЬНО)** → restart admin-web+vk-bot → smoke :8080/login=200. Коннект — paramiko
   `scripts/_ssh_run.py`, пароль в env `SSH_PASS` (в код НЕ писать).

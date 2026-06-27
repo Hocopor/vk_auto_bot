@@ -424,7 +424,7 @@ UX модерации, потом тяжёлые UI-переделки.
       decide-гейт, settings). Сделано оркестратором руками (сабагенты легли по лимиту сессии).
       Миграция `0006_receipt_date_abuse` (receipt_date/receipt_signature/needs_attention +
       индексы). **ДЕПЛОЙ НЕ ВЫПОЛНЕН:** в окружении нет `SSH_PASS` — нужен `alembic upgrade
-      head` (0006) на боевом + restart. Запушено в GitHub.
+      head` (0006) на боевом + restart. Запушено в GitHub (коммит `b891fdd`).
 
 ### P2 — Диалоговый флоу + данные участника
 
