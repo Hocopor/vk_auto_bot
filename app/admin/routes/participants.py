@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import distinct, func, select
+from sqlalchemy import distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,6 +12,15 @@ from app.core.services.participants import resolve_public_name
 router = APIRouter()
 
 PAGE_SIZE = 50
+
+
+def _text_conditions(qs: str):
+    like = f"%{qs}%"
+    return [
+        Participant.provided_name.ilike(like),
+        Participant.vk_name.ilike(like),
+        Participant.phone.ilike(like),
+    ]
 
 
 def _build_person(parts: list[Participant]) -> dict:
@@ -41,11 +50,13 @@ async def participants_list(
     request: Request,
     event_id: OptionalInt = None,
     page: int = 1,
+    q: str | None = None,
     user: str = Depends(require_login),
     session: AsyncSession = Depends(get_session),
 ):
     page = max(page, 1)
     offset = (page - 1) * PAGE_SIZE
+    qs = (q or "").strip()
 
     events_result = await session.execute(select(Event).order_by(Event.created_at.desc()))
     events = events_result.scalars().all()
@@ -53,15 +64,34 @@ async def participants_list(
     vk_group_id = await app_settings.get_setting(session, app_settings.KEY_VK_GROUP_ID)
 
     if event_id is not None:
+        event_filters = [Participant.event_id == event_id]
+        if qs:
+            conditions = _text_conditions(qs)
+            try:
+                n = int(qs)
+            except ValueError:
+                pass
+            else:
+                conditions.append(Participant.vk_user_id == n)
+                conditions.append(
+                    Participant.id.in_(
+                        select(PosterNumber.participant_id).where(
+                            PosterNumber.event_id == event_id,
+                            PosterNumber.number == n,
+                        )
+                    )
+                )
+            event_filters.append(or_(*conditions))
+
         total = (
             await session.execute(
-                select(func.count()).select_from(Participant).where(Participant.event_id == event_id)
+                select(func.count()).select_from(Participant).where(*event_filters)
             )
         ).scalar() or 0
 
         parts_result = await session.execute(
             select(Participant)
-            .where(Participant.event_id == event_id)
+            .where(*event_filters)
             .order_by(Participant.id)
             .limit(PAGE_SIZE)
             .offset(offset)
@@ -98,15 +128,30 @@ async def participants_list(
                 "has_prev": page > 1,
                 "has_next": offset + PAGE_SIZE < total,
                 "vk_group_id": vk_group_id,
+                "q": qs,
             },
         )
 
+    all_filters = []
+    if qs:
+        conditions = _text_conditions(qs)
+        try:
+            n = int(qs)
+        except ValueError:
+            pass
+        else:
+            conditions.append(Participant.vk_user_id == n)
+        all_filters.append(or_(*conditions))
+
     total = (
-        await session.execute(select(func.count(distinct(Participant.vk_user_id))))
+        await session.execute(
+            select(func.count(distinct(Participant.vk_user_id))).where(*all_filters)
+        )
     ).scalar() or 0
 
     vk_ids_result = await session.execute(
         select(Participant.vk_user_id)
+        .where(*all_filters)
         .group_by(Participant.vk_user_id)
         .order_by(func.max(Participant.id).desc())
         .limit(PAGE_SIZE)
@@ -159,6 +204,7 @@ async def participants_list(
             "has_prev": page > 1,
             "has_next": offset + PAGE_SIZE < total,
             "vk_group_id": vk_group_id,
+            "q": qs,
         },
     )
 

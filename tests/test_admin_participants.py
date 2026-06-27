@@ -199,3 +199,88 @@ async def test_single_card_shows_event(client, maker):
 async def test_single_card_unknown_id_404(client, maker):
     resp = await client.get("/participants/999999")
     assert resp.status_code == 404
+
+
+async def test_search_event_mode_by_name(client, maker):
+    event_id = await make_event(maker)
+    await make_participant(maker, event_id, vk_user_id=701, provided_name="Анна Иванова")
+    await make_participant(maker, event_id, vk_user_id=702, provided_name="Борис Петров")
+
+    resp = await client.get("/participants", params={"event_id": event_id, "q": "Анна"})
+    assert resp.status_code == 200
+    assert "Анна Иванова" in resp.text
+    assert "Борис Петров" not in resp.text
+
+
+async def test_search_event_mode_by_phone(client, maker):
+    event_id = await make_event(maker)
+    await make_participant(maker, event_id, vk_user_id=711, phone="+79991234567")
+    await make_participant(maker, event_id, vk_user_id=712, phone="+79997654321")
+
+    resp = await client.get("/participants", params={"event_id": event_id, "q": "9991234"})
+    assert resp.status_code == 200
+    assert "+79991234567" in resp.text
+    assert "+79997654321" not in resp.text
+
+
+async def test_search_event_mode_by_vk_id(client, maker):
+    event_id = await make_event(maker)
+    await make_participant(maker, event_id, vk_user_id=801, provided_name="Кто-то")
+    await make_participant(maker, event_id, vk_user_id=802, provided_name="Другой")
+
+    resp = await client.get("/participants", params={"event_id": event_id, "q": "801"})
+    assert resp.status_code == 200
+    assert "801" in resp.text
+    assert "802" not in resp.text
+
+
+async def test_search_event_mode_by_number(client, maker):
+    event_id = await make_event(maker)
+    p1 = await make_participant(maker, event_id, vk_user_id=901, provided_name="Первый")
+    purchase1_id = await make_purchase(maker, event_id, p1, status=PurchaseStatus.approved)
+    await make_numbers(maker, event_id, p1, purchase1_id, [42])
+    await make_participant(maker, event_id, vk_user_id=902, provided_name="Второй")
+
+    resp = await client.get("/participants", params={"event_id": event_id, "q": "42"})
+    assert resp.status_code == 200
+    assert "901" in resp.text
+    assert "902" not in resp.text
+
+
+async def test_search_all_mode_by_name(client, maker):
+    event1_id = await make_event(maker, name="Событие А", keyword="событиеа")
+    event2_id = await make_event(maker, name="Событие Б", keyword="событиеб")
+    await make_participant(maker, event1_id, vk_user_id=951, provided_name="Светлана Орлова")
+    await make_participant(maker, event2_id, vk_user_id=952, provided_name="Тимур Каримов")
+
+    resp = await client.get("/participants", params={"q": "Светлана"})
+    assert resp.status_code == 200
+    assert "951" in resp.text
+    assert "952" not in resp.text
+
+
+async def test_search_all_mode_number_disabled(client, maker):
+    event_id = await make_event(maker)
+    p1 = await make_participant(maker, event_id, vk_user_id=961, provided_name="Кто-то")
+    purchase1_id = await make_purchase(maker, event_id, p1, status=PurchaseStatus.approved)
+    await make_numbers(maker, event_id, p1, purchase1_id, [77])
+
+    resp = await client.get("/participants", params={"q": "77"})
+    assert resp.status_code == 200
+    assert "Ничего не найдено" in resp.text
+
+
+async def test_search_pagination_preserves_q(client, maker):
+    event_id = await make_event(maker)
+    for i in range(60):
+        await make_participant(maker, event_id, vk_user_id=3000 + i, provided_name="Тестовый")
+
+    resp = await client.get("/participants", params={"event_id": event_id, "q": "Тестовый", "page": 1})
+    assert resp.status_code == 200
+    assert "&q=" in resp.text
+
+
+async def test_search_no_results_message(client, maker):
+    resp = await client.get("/participants", params={"q": "НесуществующееИмяТочно"})
+    assert resp.status_code == 200
+    assert "Ничего не найдено" in resp.text

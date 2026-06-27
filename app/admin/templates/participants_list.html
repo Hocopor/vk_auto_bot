@@ -8,13 +8,18 @@
 </div>
 
 <div class="toolbar">
-    <form method="get" action="/participants" data-no-loading>
+    <form method="get" action="/participants" class="grow" data-no-loading>
         <select name="event_id" onchange="this.form.submit()">
             <option value="" {% if event_id is none %}selected{% endif %}>Все мероприятия</option>
             {% for e in events %}
             <option value="{{ e.id }}" {% if event_id == e.id %}selected{% endif %}>{{ e.name }}{% if not e.is_active %} (остановлено){% endif %}</option>
             {% endfor %}
         </select>
+        <input type="text" class="grow" name="q" value="{{ q }}" placeholder="{% if event_id is not none %}Имя, ВК, телефон, ID, номер{% else %}Имя, ВК, телефон, ID{% endif %}">
+        <button type="submit" class="btn btn-secondary btn-sm">Найти</button>
+        {% if q %}
+        <a href="/participants{% if event_id is not none %}?event_id={{ event_id }}{% endif %}" class="btn btn-secondary btn-sm">Сбросить</a>
+        {% endif %}
     </form>
 </div>
 
@@ -54,7 +59,11 @@
                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
                 </svg>
             </div>
+            {% if q %}
+            <h3>Ничего не найдено по запросу «{{ q }}»</h3>
+            {% else %}
             <h3>Пока нет участников</h3>
+            {% endif %}
         </div>
     </div>
     {% endif %}
@@ -90,7 +99,11 @@
     {% else %}
     <div class="panel">
         <div class="empty-state">
+            {% if q %}
+            <h3>Ничего не найдено по запросу «{{ q }}»</h3>
+            {% else %}
             <h3>Пока нет участников</h3>
+            {% endif %}
         </div>
     </div>
     {% endif %}
@@ -99,11 +112,11 @@
 {% if total > page_size %}
 <div class="pager">
     {% if has_prev %}
-    <a class="btn btn-secondary btn-sm" href="/participants?page={{ page - 1 }}{% if event_id %}&event_id={{ event_id }}{% endif %}">← Назад</a>
+    <a class="btn btn-secondary btn-sm" href="/participants?page={{ page - 1 }}{% if event_id %}&event_id={{ event_id }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}">← Назад</a>
     {% endif %}
     <span class="muted">Стр. {{ page }} · всего {{ total }}</span>
     {% if has_next %}
-    <a class="btn btn-secondary btn-sm" href="/participants?page={{ page + 1 }}{% if event_id %}&event_id={{ event_id }}{% endif %}">Вперёд →</a>
+    <a class="btn btn-secondary btn-sm" href="/participants?page={{ page + 1 }}{% if event_id %}&event_id={{ event_id }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}">Вперёд →</a>
     {% endif %}
 </div>
 {% endif %}
