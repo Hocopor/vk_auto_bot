@@ -29,6 +29,9 @@
 {% if partial %}
 <div class="banner banner-warning">⚠ Частичная оплата — сумма не совпадает с ценой билета.</div>
 {% endif %}
+{% if error == 'amount' %}
+<div class="banner banner-warning">⚠ Укажите сумму перед одобрением.</div>
+{% endif %}
 
 <div class="panel">
     <h2>Участник</h2>
@@ -77,15 +80,12 @@
     <h2>Действия</h2>
     <div class="btn-row">
         <form method="post" action="/moderation/{{ p.id }}/approve" class="inline-form" data-loading-text="Одобряем…">
-            <button type="submit" class="btn btn-success">✓ Одобрить</button>
+            <button type="submit" class="btn btn-success"{% if not can_approve %} disabled{% endif %}>✓ Одобрить</button>
         </form>
+        {% if not can_approve %}<span class="muted">Укажите сумму</span>{% endif %}
         <form method="post" action="/moderation/{{ p.id }}/reject" class="inline-form" data-no-loading
-              onsubmit="return confirm('Отклонить покупку?')">
+              onsubmit="return confirm('Отклонить покупку и освободить номера?')">
             <button type="submit" class="btn btn-danger">Отклонить</button>
-        </form>
-        <form method="post" action="/moderation/{{ p.id }}/revoke" class="inline-form" data-no-loading
-              onsubmit="return confirm('Отозвать номера?')">
-            <button type="submit" class="btn btn-secondary btn-sm">Отозвать номера</button>
         </form>
     </div>
 </div>

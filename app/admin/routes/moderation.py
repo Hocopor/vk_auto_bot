@@ -11,7 +11,7 @@ from app.admin.deps import get_session, require_login
 from app.admin.templating import templates
 from app.core.models import Participant, PosterNumber, Purchase, PurchaseStatus
 from app.core.services import app_settings
-from app.core.services.purchases import approve, reject, revoke, set_amount
+from app.core.services.purchases import approve, can_approve, reject, set_amount
 
 router = APIRouter()
 
@@ -110,6 +110,7 @@ async def moderation_list(
 async def moderation_detail(
     purchase_id: int,
     request: Request,
+    error: str | None = None,
     user: str = Depends(require_login),
     session: AsyncSession = Depends(get_session),
 ):
@@ -125,6 +126,7 @@ async def moderation_detail(
 
     partial = _is_partial(purchase)
     vk_group_id = await app_settings.get_setting(session, app_settings.KEY_VK_GROUP_ID)
+    can_approve_flag = can_approve(purchase, purchase.event) if purchase.event else False
 
     return templates.TemplateResponse(
         "purchase_detail.html",
@@ -134,6 +136,8 @@ async def moderation_detail(
             "purchase": purchase,
             "partial": partial,
             "vk_group_id": vk_group_id,
+            "can_approve": can_approve_flag,
+            "error": error,
         },
     )
 
@@ -170,6 +174,8 @@ async def moderation_approve(
     purchase = result.scalar_one_or_none()
     if purchase is None:
         raise HTTPException(status_code=404, detail="Покупка не найдена")
+    if not can_approve(purchase, purchase.event):
+        return RedirectResponse(url=f"/moderation/{purchase_id}?error=amount", status_code=303)
     await approve(session, purchase, moderated_by=user, event=purchase.event)
     await session.commit()
     return RedirectResponse(url=f"/moderation/{purchase_id}", status_code=303)
@@ -184,24 +190,11 @@ async def moderation_reject(
     purchase = await session.get(Purchase, purchase_id)
     if purchase is None:
         raise HTTPException(status_code=404, detail="Покупка не найдена")
+    # reject освобождает присвоенные номера и снимает флаг numbers_assigned.
     await reject(session, purchase, moderated_by=user)
     await session.commit()
-    return RedirectResponse(url=f"/moderation/{purchase_id}", status_code=303)
-
-
-@router.post("/moderation/{purchase_id}/revoke")
-async def moderation_revoke(
-    purchase_id: int,
-    user: str = Depends(require_login),
-    session: AsyncSession = Depends(get_session),
-):
-    purchase = await session.get(Purchase, purchase_id)
-    if purchase is None:
-        raise HTTPException(status_code=404, detail="Покупка не найдена")
-    await revoke(session, purchase, moderated_by=user)
-    await session.commit()
-    # Публичная таблица читается из БД на лету — отзыв номеров отражается сразу,
-    # ничего пересобирать не нужно.
+    # Публичная таблица читается из БД на лету — освобождение номеров отражается
+    # сразу, ничего пересобирать не нужно.
     return RedirectResponse(url=f"/moderation/{purchase_id}", status_code=303)
 
 

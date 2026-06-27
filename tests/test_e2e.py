@@ -322,8 +322,8 @@ async def test_e2e_google_sheet_sync_triggers(maker, tmp_path, monkeypatch):
 # ── E2E 4: Отзыв номеров (revoke) ──
 
 
-async def test_e2e_revoke_frees_numbers(maker):
-    """Revoking a purchase frees its numbers for reuse."""
+async def test_e2e_reject_frees_numbers(maker):
+    """Rejecting a purchase frees its numbers for reuse."""
     async with maker() as session:
         event = Event(
             name="Revoke Test",
@@ -355,13 +355,14 @@ async def test_e2e_revoke_frees_numbers(maker):
             ))
         await session.commit()
 
-    # Revoke via service
+    # Reject via service
     async with maker() as session:
-        from app.core.services.purchases import revoke
+        from app.core.services.purchases import reject
         purchase = await session.get(Purchase, purchase1.id)
-        freed = await revoke(session, purchase, moderated_by="admin")
+        freed = await reject(session, purchase, moderated_by="admin")
         await session.commit()
         assert freed == 2
+        assert purchase.status == PurchaseStatus.rejected
 
     # Verify numbers freed
     async with maker() as session:

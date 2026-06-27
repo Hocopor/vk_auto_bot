@@ -14,7 +14,7 @@ from app.core.services import abuse
 from app.core.services import app_settings as app_settings_svc
 from app.core.services.participants import parse_phone, parse_name_and_phone, upsert_participant
 from app.core.services.numbers import count_posters, assign_unique, free_numbers, NumbersExhausted
-from app.core.services.purchases import decide_after_ocr, evaluate_payment, approve, revoke
+from app.core.services.purchases import decide_after_ocr, evaluate_payment, approve, reject, can_approve
 from app.core.services.winners import pick_winners
 from app.core.services.events import create_event, delete_event
 
@@ -168,9 +168,9 @@ async def test_assign_unique_success_and_exhaustion(session):
         await assign_unique(session, event.id, participant.id, purchase2.id, 3)
 
 
-# 7. free_numbers / revoke -------------------------------------------------------
+# 7. free_numbers / reject -------------------------------------------------------
 
-async def test_revoke_frees_numbers_and_reassign(session):
+async def test_reject_frees_numbers_and_reassign(session):
     event = await make_event(session, number_min=1, number_max=5)
     participant = await make_participant(session, event.id)
     purchase = await make_purchase(session, event.id, participant.id)
@@ -178,11 +178,11 @@ async def test_revoke_frees_numbers_and_reassign(session):
     numbers = await assign_unique(session, event.id, participant.id, purchase.id, 3)
     await session.commit()
 
-    freed = await revoke(session, purchase, moderated_by="admin")
+    freed = await reject(session, purchase, moderated_by="admin")
     await session.commit()
 
     assert freed == 3
-    assert purchase.status == PurchaseStatus.revoked
+    assert purchase.status == PurchaseStatus.rejected
     assert purchase.numbers_assigned is False
 
     result = await session.execute(
@@ -195,6 +195,56 @@ async def test_revoke_frees_numbers_and_reassign(session):
     await session.commit()
     assert len(numbers2) == 3
     assert set(numbers2).issubset(set(numbers) | (set(range(1, 6)) - set(numbers)))
+
+
+async def test_approve_resets_stale_assigned_flag(session):
+    event = await make_event(session, number_min=1, number_max=5, price=Decimal("250"))
+    participant = await make_participant(session, event.id)
+    purchase = await make_purchase(
+        session,
+        event.id,
+        participant.id,
+        status=PurchaseStatus.approved,
+        amount=Decimal("500"),
+        numbers_assigned=True,
+    )
+    await session.commit()
+
+    await approve(session, purchase, event=event)
+    await session.commit()
+
+    assert purchase.numbers_assigned is False
+    assert purchase.posters_count == 2
+
+    purchase2 = await make_purchase(
+        session,
+        event.id,
+        participant.id,
+        status=PurchaseStatus.approved,
+        amount=Decimal("500"),
+        numbers_assigned=False,
+    )
+    await assign_unique(session, event.id, participant.id, purchase2.id, 2)
+    purchase2.numbers_assigned = True
+    await session.commit()
+
+    await approve(session, purchase2, event=event)
+    await session.commit()
+
+    assert purchase2.numbers_assigned is True
+
+
+def test_can_approve():
+    event = type("E", (), {"price": Decimal("250")})()
+    purchase_none = type("P", (), {"amount": None})()
+    purchase_low = type("P", (), {"amount": Decimal("100")})()
+    purchase_ok = type("P", (), {"amount": Decimal("250")})()
+    purchase_more = type("P", (), {"amount": Decimal("600")})()
+
+    assert can_approve(purchase_none, event) is False
+    assert can_approve(purchase_low, event) is False
+    assert can_approve(purchase_ok, event) is True
+    assert can_approve(purchase_more, event) is True
 
 
 # 8. pick_winners -----------------------------------------------------------------

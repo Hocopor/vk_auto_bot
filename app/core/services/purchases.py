@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import Event, Purchase, PurchaseStatus
 from app.core.services import abuse
-from app.core.services.numbers import count_posters, free_numbers
+from app.core.services.numbers import assigned_count_for_purchase, count_posters, free_numbers
 
 
 def evaluate_payment(amount, price, recipient_found: bool) -> bool:
@@ -18,6 +18,13 @@ def evaluate_payment(amount, price, recipient_found: bool) -> bool:
     if price <= 0:
         return False
     return bool(amount >= price and recipient_found)
+
+
+def can_approve(purchase: Purchase, event: Event) -> bool:
+    """Можно ли одобрять: указана сумма, и она покрывает хотя бы один билет."""
+    if purchase.amount is None or event is None:
+        return False
+    return count_posters(purchase.amount, event.price) >= 1
 
 
 async def decide_after_ocr(
@@ -89,20 +96,21 @@ async def approve(
 ) -> None:
     purchase.status = PurchaseStatus.approved
     purchase.moderated_by = moderated_by
-    if purchase.amount is not None and event is not None and not purchase.posters_count:
+    if purchase.amount is not None and event is not None:
         purchase.posters_count = count_posters(purchase.amount, event.price)
+    # Re-delivery safety: флаг стоит, но номеров фактически нет (после reject/смены
+    # статусов) — сбросить, иначе воркер навсегда пропустит покупку.
+    if purchase.numbers_assigned:
+        if await assigned_count_for_purchase(session, purchase.id) == 0:
+            purchase.numbers_assigned = False
     await session.flush()
 
 
-async def reject(session: AsyncSession, purchase: Purchase, moderated_by: str | None = None) -> None:
-    purchase.status = PurchaseStatus.rejected
-    purchase.moderated_by = moderated_by
-    await session.flush()
-
-
-async def revoke(session: AsyncSession, purchase: Purchase, moderated_by: str | None = None) -> int:
+async def reject(session: AsyncSession, purchase: Purchase, moderated_by: str | None = None) -> int:
+    """Отклонить покупку: освободить присвоенные номера, статус rejected, снять флаг.
+    Раньше это делал revoke (но со статусом revoked) — теперь объединено в reject."""
     n = await free_numbers(session, purchase.id)
-    purchase.status = PurchaseStatus.revoked
+    purchase.status = PurchaseStatus.rejected
     purchase.numbers_assigned = False
     purchase.moderated_by = moderated_by
     await session.flush()

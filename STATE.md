@@ -2,6 +2,38 @@
 
 ## Текущая точка
 
+- **2026-06-27. ЭТАП 8.5 (объединить Отклонить/Отозвать + фикс статусной машины модерации) — КОД+ТЕСТЫ+E2E ГОТОВЫ. ДЕПЛОЙ ОЖИДАЕТ SSH_PASS.**
+  P3, edit.md #5 + косяк `bug-moderation-status-churn-no-delivery` (закрыт). Решены ВМЕСТЕ.
+  Проектировал ОРКЕСТРАТОР, код писал coder-сабагент (TDD). **Фаза 9 (overselling/ёмкость)
+  в этот этап НЕ входит — отложена в конец плана.**
+  - **Реализация:**
+    - `numbers.py`: новый хелпер `assigned_count_for_purchase(session, purchase_id)` (COUNT
+      PosterNumber по покупке) + импорт `func`.
+    - `purchases.py`: УДАЛЁН `revoke()`; `reject()` теперь = освобождает номера (`free_numbers`)
+      + статус `rejected` + `numbers_assigned=False` + возвращает freed (то, что делал revoke,
+      но статус rejected — снимает «латч» недоставки). `approve()` — всегда пересчитывает
+      `posters_count` из amount при event; safety-сброс залипшего флага (numbers_assigned=True,
+      но номеров фактически 0 → сброс, чтобы воркер переприсвоил после reject/чехарды). Новый
+      чистый хелпер `can_approve(purchase, event)` (amount задана И покрывает ≥1 билет).
+    - `routes/moderation.py`: удалён роут `/revoke`; `approve` гейтит по `can_approve` (нет
+      суммы → redirect `?error=amount`, статус не меняется); `detail` принимает `error` и отдаёт
+      в шаблон `can_approve`+`error`.
+    - `purchase_detail.html`: баннер `error=amount` «Укажите сумму перед одобрением»; кнопка
+      «Одобрить» `disabled` + подсказка «Укажите сумму» когда `not can_approve`; удалена форма
+      «Отозвать номера»; confirm reject → «Отклонить покупку и освободить номера?».
+    - Тесты адаптированы (revoke→reject в test_services/test_admin_moderation/test_e2e) + новые:
+      approve без суммы блокируется, reject→approve переподхватывает, approve сбрасывает залипший
+      флаг, can_approve.
+  - **РЕЗУЛЬТАТ:** pytest **243 passed, 2 skipped** (было 238/2; +5 тестов). e2e agent-browser
+    на локальной SQLite-QA: карточка #2 (amount=None) — кнопка «Одобрить» disabled + подсказка
+    «Укажите сумму» + баннер при `?error=amount`; карточка #1 (approved, есть сумма) — «Одобрить»
+    активна, кнопки «Отозвать» НЕТ нигде; «Отклонить» на месте (скрин
+    `data/screens/8_5_moderation_no_amount.png`). Косяк недоставки закрыт: reject сбрасывает
+    `numbers_assigned` → reject→approve снова даёт воркеру переприсвоить номера.
+  - **ДЕПЛОЙ НЕ ВЫПОЛНЕН:** в окружении НЕТ `SSH_PASS`. Миграций нет (схема не менялась). Нужно
+    (в начале след. сессии или когда будет SSH_PASS): commit+push → `git pull --ff-only` /opt+/root
+    → restart admin-web+vk-bot → smoke `:8080/login=200`. **Коммит ещё не сделан** (на момент
+    записи делаю прямо сейчас — см. ниже).
 - **2026-06-27. ЭТАП 8.4 (FSM-диалог бота: ФИО+телефон после чека) — КОД+ТЕСТЫ+E2E ГОТОВЫ.**
   edit.md #4, группа P2. Проектировал ОРКЕСТРАТОР, код писал coder-сабагент (TDD).
   - **Флоу:** keyword → msg_instruction(+QR) [stage=awaiting_receipt] → ЧЕК →
@@ -472,12 +504,16 @@
 
 ## Следующий шаг
 
-- **ЭТАП 8.5 / группа P3 — Объединить «Отклонить»/«Отозвать» в одну кнопку (НОВАЯ СЕССИЯ).**
-  По плану `PLAN.md → Фаза 8, 8.5` (edit.md #5). reject теперь = освобождает номера
-  (free_numbers) + статус rejected + numbers_assigned=False (то, что раньше делал revoke).
-  Убрать кнопку/роут revoke из UI. Пересекается с **косяком статусной машины модерации**
-  (память `bug-moderation-status-churn-no-delivery.md`) — возможно решать вместе.
-  Скилы: TDD. Агент: coder (sonnet).
+- **СНАЧАЛА: задеплоить 8.5, когда будет `SSH_PASS`** (commit+push сделаны в сессии 8.5 —
+  см. «Текущая точка»; миграций нет). `git pull --ff-only` /opt+/root → restart admin-web+
+  vk-bot → smoke `:8080/login=200`. Затем — следующий этап ниже.
+- **ЭТАП 8.6 / группа P3 — OCR-сумма автоподстановка в поле правки (НОВАЯ СЕССИЯ).**
+  По плану `PLAN.md → Фаза 8, 8.6` (edit.md #6). В `purchase_detail.html` поле «сумма» (форма
+  set_amount): `value = purchase.amount or purchase.ocr_amount or ''`. Мелочь. Агент:
+  coder-simple (haiku). Можно объединить с 8.7 (автоподстановка имени/телефона + публичное имя).
+- **ЭТАП 8.5 (Отклонить/Отозвать + статусная машина) — КОД+ТЕСТЫ+E2E ГОТОВЫ; ДЕПЛОЙ ОЖИДАЕТ
+  SSH_PASS** (см. «Текущая точка»). Косяк недоставки `bug-moderation-status-churn-no-delivery`
+  закрыт этим этапом.
 - **ЭТАП 8.4 (FSM-диалог: ФИО+телефон) — ЗАВЕРШЁН И ЗАДЕПЛОЕН** (`5da070d`). Ждём живой
   прогон заказчика в ВК.
 - **ЭТАП 8.3 (Авто-подтверждение + abuse) — ЗАВЕРШЁН И ЗАДЕПЛОЕН** (`310efda`).

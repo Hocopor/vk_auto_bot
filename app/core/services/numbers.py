@@ -1,7 +1,7 @@
 import random
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import Event, PosterNumber
@@ -71,6 +71,16 @@ async def assign_unique(
 
     await session.flush()
     return chosen
+
+
+async def assigned_count_for_purchase(session: AsyncSession, purchase_id: int) -> int:
+    """Сколько номеров фактически присвоено данной покупке (по PosterNumber)."""
+    result = await session.execute(
+        select(func.count())
+        .select_from(PosterNumber)
+        .where(PosterNumber.purchase_id == purchase_id)
+    )
+    return int(result.scalar_one())
 
 
 async def free_numbers(session: AsyncSession, purchase_id: int) -> int:

@@ -134,7 +134,7 @@ async def test_reject(client, maker):
         assert purchase.moderated_by == "admin"
 
 
-async def test_revoke_frees_numbers(client, maker):
+async def test_reject_frees_numbers(client, maker):
     event_id = await make_event(maker)
     participant_id = await make_participant(maker, event_id)
     purchase_id = await make_purchase(
@@ -153,7 +153,7 @@ async def test_revoke_frees_numbers(client, maker):
             )
         await session.commit()
 
-    resp = await client.post(f"/moderation/{purchase_id}/revoke", follow_redirects=False)
+    resp = await client.post(f"/moderation/{purchase_id}/reject", follow_redirects=False)
     assert resp.status_code == 303
 
     async with maker() as session:
@@ -163,7 +163,75 @@ async def test_revoke_frees_numbers(client, maker):
         assert result.scalars().all() == []
 
         purchase = await session.get(Purchase, purchase_id)
-        assert purchase.status == PurchaseStatus.revoked
+        assert purchase.status == PurchaseStatus.rejected
+        assert purchase.numbers_assigned is False
+
+
+async def test_approve_blocked_without_amount(client, maker):
+    event_id = await make_event(maker, price=Decimal("250"))
+    participant_id = await make_participant(maker, event_id)
+    purchase_id = await make_purchase(
+        maker, event_id, participant_id, status=PurchaseStatus.manual_review, amount=None
+    )
+
+    resp = await client.post(f"/moderation/{purchase_id}/approve", follow_redirects=False)
+    assert resp.status_code == 303
+    assert "error=amount" in resp.headers["location"]
+
+    async with maker() as session:
+        purchase = await session.get(Purchase, purchase_id)
+        assert purchase.status == PurchaseStatus.manual_review
+
+
+async def test_approve_with_amount_works(client, maker):
+    event_id = await make_event(maker, price=Decimal("250"))
+    participant_id = await make_participant(maker, event_id)
+    purchase_id = await make_purchase(
+        maker, event_id, participant_id, status=PurchaseStatus.manual_review, amount=Decimal("500")
+    )
+
+    resp = await client.post(f"/moderation/{purchase_id}/approve", follow_redirects=False)
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        purchase = await session.get(Purchase, purchase_id)
+        assert purchase.status == PurchaseStatus.approved
+        assert purchase.posters_count == 2
+
+
+async def test_reject_then_approve_redelivers(client, maker):
+    event_id = await make_event(maker, price=Decimal("250"))
+    participant_id = await make_participant(maker, event_id)
+    purchase_id = await make_purchase(
+        maker,
+        event_id,
+        participant_id,
+        status=PurchaseStatus.approved,
+        amount=Decimal("500"),
+        numbers_assigned=True,
+    )
+
+    async with maker() as session:
+        for n in (1, 2):
+            session.add(
+                PosterNumber(
+                    event_id=event_id,
+                    participant_id=participant_id,
+                    purchase_id=purchase_id,
+                    number=n,
+                )
+            )
+        await session.commit()
+
+    resp = await client.post(f"/moderation/{purchase_id}/reject", follow_redirects=False)
+    assert resp.status_code == 303
+
+    resp = await client.post(f"/moderation/{purchase_id}/approve", follow_redirects=False)
+    assert resp.status_code == 303
+
+    async with maker() as session:
+        purchase = await session.get(Purchase, purchase_id)
+        assert purchase.status == PurchaseStatus.approved
         assert purchase.numbers_assigned is False
 
 
