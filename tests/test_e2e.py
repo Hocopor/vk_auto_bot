@@ -171,7 +171,7 @@ async def test_full_flow_keyword_then_receipt_then_worker(maker, tmp_path, monke
     # Step 3: Worker processes
     sent_messages = []
 
-    async def mock_send(vk_user_id, text):
+    async def mock_send(vk_user_id, text, attachment=None):
         sent_messages.append((vk_user_id, text))
 
     async with maker() as session:
@@ -308,7 +308,7 @@ async def test_e2e_google_sheet_sync_triggers(maker, tmp_path, monkeypatch):
 
     sent = []
 
-    async def mock_send(uid, txt):
+    async def mock_send(uid, txt, attachment=None):
         sent.append((uid, txt))
 
     async with maker() as session:
@@ -496,7 +496,7 @@ async def test_e2e_multiple_participants(maker):
 
     sent = []
 
-    async def mock_send(uid, txt):
+    async def mock_send(uid, txt, attachment=None):
         sent.append((uid, txt))
 
     async with maker() as session:

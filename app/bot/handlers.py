@@ -122,7 +122,15 @@ async def _handle_message(bot: Bot, message: Message, upload_api=None) -> None:
         attachment_info = await _extract_receipt_attachment(message)
         if attachment_info is not None:
             await _handle_receipt(
-                bot, message, session, user_id, vk_name, vk_link, vk_first_name, attachment_info
+                bot,
+                message,
+                session,
+                user_id,
+                vk_name,
+                vk_link,
+                vk_first_name,
+                attachment_info,
+                upload_api,
             )
         else:
             text = message.text or ""
@@ -132,7 +140,7 @@ async def _handle_message(bot: Bot, message: Message, upload_api=None) -> None:
                     bot, message, session, user_id, vk_name, vk_link, vk_first_name, event, upload_api
                 )
             else:
-                await _handle_contacts(bot, message, session, user_id, vk_first_name)
+                await _handle_contacts(bot, message, session, user_id, vk_first_name, upload_api)
 
         await session.commit()
 
@@ -146,6 +154,7 @@ async def _handle_receipt(
     vk_link: str | None,
     vk_first_name: str | None,
     attachment_info: tuple[str, str],
+    upload_api=None,
 ) -> None:
     event = await dialog.resolve_event_for_receipt(session, user_id)
     if event is None:
@@ -199,7 +208,10 @@ async def _handle_receipt(
 
     if event.send_receipt_received:
         ctx = await _build_ctx(event)
-        await message.answer(render(event.msg_receipt_received, ctx))
+        attachment = await resolve_message_attachment(
+            session, event.id, "receipt_received", upload_api or getattr(bot, "api", None)
+        )
+        await message.answer(render(event.msg_receipt_received, ctx), attachment=attachment)
     # Присвоение номеров и финальное уведомление — отдельный воркер (этап 2.7).
     _ = purchase
 
@@ -243,6 +255,61 @@ async def resolve_qr_attachment(
     return None
 
 
+async def resolve_message_attachment(
+    session,
+    event_id: int,
+    message_key: str,
+    upload_api,
+    *,
+    uploader_cls=PhotoMessageUploader,
+    retries: int = 3,
+) -> str | None:
+    """Готовит attachment-строку картинки сообщения (копия resolve_qr_attachment).
+
+    Кэширует успешную загрузку в EventMessageImage.attachment. При неудаче —
+    пишет attachment_error и возвращает None, чтобы текст всё равно ушёл без
+    картинки. Грузим через выделенный API (upload_api), не через bot.api.
+    """
+    from sqlalchemy import select
+
+    from app.core.models import EventMessageImage
+
+    row = (
+        await session.execute(
+            select(EventMessageImage).where(
+                EventMessageImage.event_id == event_id,
+                EventMessageImage.message_key == message_key,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    if row.attachment:
+        return row.attachment
+    if not row.image_path or not os.path.exists(row.image_path):
+        return None
+    last_exc = None
+    for _ in range(max(1, retries)):
+        try:
+            uploader = uploader_cls(upload_api)
+            attachment = await uploader.upload(file_source=row.image_path)
+            row.attachment = attachment
+            row.attachment_error = None
+            return attachment
+        except Exception as e:  # noqa: BLE001
+            last_exc = e
+    row.attachment_error = (
+        f"{datetime.now():%Y-%m-%d %H:%M} {type(last_exc).__name__}: {str(last_exc)[:200]}"
+    )
+    logger.error(
+        "Message image upload failed for event %s key %s: %s",
+        event_id,
+        message_key,
+        row.attachment_error,
+    )
+    return None
+
+
 async def _handle_keyword(
     bot: Bot,
     message: Message,
@@ -267,7 +334,14 @@ async def _handle_keyword(
         await message.answer(text, attachment=attachment)
 
 
-async def _handle_contacts(bot: Bot, message: Message, session, user_id: int, vk_first_name: str | None) -> None:
+async def _handle_contacts(
+    bot: Bot,
+    message: Message,
+    session,
+    user_id: int,
+    vk_first_name: str | None,
+    upload_api=None,
+) -> None:
     """Ветка приёма ФИО+телефона в стадии awaiting_contacts. Иначе — молчит, стадию не теряет."""
     from app.core.services.participants import looks_like_contacts, parse_name_and_phone
 
@@ -287,4 +361,7 @@ async def _handle_contacts(bot: Bot, message: Message, session, user_id: int, vk
     await dialog.set_stage(session, user_id, "done")
     if event.send_contacts_saved and event.msg_contacts_saved:
         ctx = await _build_ctx(event)
-        await message.answer(render(event.msg_contacts_saved, ctx))
+        attachment = await resolve_message_attachment(
+            session, event.id, "contacts_saved", upload_api or getattr(bot, "api", None)
+        )
+        await message.answer(render(event.msg_contacts_saved, ctx), attachment=attachment)

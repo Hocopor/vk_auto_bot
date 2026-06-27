@@ -32,6 +32,9 @@ class PurchaseStatus(str, enum.Enum):
     revoked = "revoked"
 
 
+MESSAGE_IMAGE_KEYS = ("receipt_received", "contacts_saved", "after_payment")
+
+
 class Event(Base):
     __tablename__ = "events"
     __table_args__ = (
@@ -96,6 +99,29 @@ class Event(Base):
     poster_numbers: Mapped[list["PosterNumber"]] = relationship(
         back_populates="event", cascade="all, delete-orphan", passive_deletes=True
     )
+    message_images: Mapped[list["EventMessageImage"]] = relationship(
+        back_populates="event", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class EventMessageImage(Base):
+    __tablename__ = "event_message_images"
+    __table_args__ = (
+        UniqueConstraint("event_id", "message_key", name="uq_msg_image_event_key"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    message_key: Mapped[str] = mapped_column(Text, nullable=False)
+    image_path: Mapped[str] = mapped_column(Text, nullable=False)
+    attachment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attachment_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    event: Mapped["Event"] = relationship(back_populates="message_images")
 
 
 class Participant(Base):

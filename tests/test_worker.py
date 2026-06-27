@@ -27,7 +27,7 @@ def make_callbacks():
     """Возвращает (send, sent) — мок-колбэк отправки + аккумулятор вызовов."""
     sent: list[tuple[int, str]] = []
 
-    async def send_message(vk_user_id, text):
+    async def send_message(vk_user_id, text, attachment=None):
         sent.append((vk_user_id, text))
 
     return send_message, sent
@@ -168,7 +168,7 @@ async def test_numbers_exhausted_does_not_crash(session):
 async def test_send_failure_does_not_block(session):
     event, participant, purchase = await setup_purchase(session, posters_count=2)
 
-    async def failing_send(vk_user_id, text):
+    async def failing_send(vk_user_id, text, attachment=None):
         raise RuntimeError("VK API down")
 
     processed = await process_pending(session, send_message=failing_send)

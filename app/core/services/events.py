@@ -87,6 +87,7 @@ async def delete_event(session: AsyncSession, event_id: int) -> bool:
             selectinload(Event.participants),
             selectinload(Event.purchases),
             selectinload(Event.poster_numbers),
+            selectinload(Event.message_images),
         )
     )
     event = result.scalar_one_or_none()

@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     secrets_key: str = ""  # Fernet-ключ для шифрования секретов в БД (scripts/gen_secrets_key.py)
     receipts_dir: str = "./data/receipts"
     qr_dir: str = "./data/qr"  # хранение загруженных QR-картинок мероприятий
+    message_images_dir: str = "./data/message_images"  # картинки к сообщениям бота
     # Внешний адрес админ-сервера для публичных ссылок на таблицу участников,
     # которые бот шлёт в сообщениях. Например: http://185.228.72.118:8080
     public_base_url: str = ""

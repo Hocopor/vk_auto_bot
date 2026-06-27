@@ -16,7 +16,7 @@ from app.core.services.participants import resolve_public_name
 
 logger = logging.getLogger(__name__)
 
-SendMessage = Callable[[int, str], Awaitable[None]]
+SendMessage = Callable[..., Awaitable[None]]
 
 
 def _resolve_sheet_url(event) -> str:
@@ -36,6 +36,7 @@ async def process_pending(
     session: AsyncSession,
     *,
     send_message: SendMessage,
+    upload_api=None,
 ) -> int:
     """Найти оплаченные покупки без номеров, присвоить номера и уведомить участника.
 
@@ -94,8 +95,15 @@ async def process_pending(
 
         if event.send_after_payment:
             text = render(event.msg_after_payment, ctx)
+            attachment = None
+            if upload_api is not None:
+                from app.bot.handlers import resolve_message_attachment
+
+                attachment = await resolve_message_attachment(
+                    session, event.id, "after_payment", upload_api
+                )
             try:
-                await send_message(participant.vk_user_id, text)
+                await send_message(participant.vk_user_id, text, attachment)
             except Exception:
                 logger.exception(
                     "Failed to send after-payment message to vk_user_id=%s",
@@ -137,24 +145,28 @@ async def process_pending(
     return processed
 
 
-def make_real_callbacks(bot):
-    async def _send(vk_user_id: int, text: str) -> None:
-        await bot.api.messages.send(peer_id=vk_user_id, message=text, random_id=0)
+def make_real_callbacks(bot, upload_api=None):
+    async def _send(vk_user_id: int, text: str, attachment: str | None = None) -> None:
+        await bot.api.messages.send(
+            peer_id=vk_user_id, message=text, attachment=attachment, random_id=0
+        )
 
     return _send
 
 
-async def run_once(bot) -> int:
-    send = make_real_callbacks(bot)
+async def run_once(bot, upload_api=None) -> int:
+    send = make_real_callbacks(bot, upload_api)
     async with async_session_maker() as session:
-        return await process_pending(session, send_message=send)
+        return await process_pending(session, send_message=send, upload_api=upload_api)
 
 
-async def worker_loop(bot, stop_event: asyncio.Event | None = None) -> None:
+async def worker_loop(
+    bot, stop_event: asyncio.Event | None = None, upload_api=None
+) -> None:
     logger.info("Worker started, interval=%ss", settings.worker_interval_sec)
     while stop_event is None or not stop_event.is_set():
         try:
-            n = await run_once(bot)
+            n = await run_once(bot, upload_api)
             if n:
                 logger.info("Worker assigned numbers for %s purchase(s)", n)
         except Exception:

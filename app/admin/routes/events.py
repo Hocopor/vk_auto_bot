@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import uuid
@@ -14,7 +15,7 @@ from app.admin.templating import templates
 from app.core import timeutil
 from app.core.config import settings
 from app.core.defaults import DEFAULT_TEXTS
-from app.core.models import Event, Purchase
+from app.core.models import Event, EventMessageImage, Purchase
 from app.core.services.events import (
     create_event,
     delete_event,
@@ -25,6 +26,74 @@ from app.core.services.events import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+
+def _remove_file_quiet(path: str | None) -> None:
+    if path:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+async def _save_message_image_file(event_id: int, message_key: str, upload) -> str | None:
+    if upload is None or not getattr(upload, "filename", None):
+        return None
+    content = await upload.read()
+    if not content:
+        return None
+    ext = os.path.splitext(upload.filename)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTS:
+        return None
+    os.makedirs(settings.message_images_dir, exist_ok=True)
+    h = hashlib.sha1(content).hexdigest()[:12]
+    name = f"{event_id}_{message_key}_{h}{ext}"
+    path = os.path.join(settings.message_images_dir, name)
+    with open(path, "wb") as f:
+        f.write(content)
+    return path
+
+
+async def _process_message_image(
+    session: AsyncSession, event_id: int, message_key: str, upload, delete_flag: bool
+) -> None:
+    existing = (
+        await session.execute(
+            select(EventMessageImage).where(
+                EventMessageImage.event_id == event_id,
+                EventMessageImage.message_key == message_key,
+            )
+        )
+    ).scalar_one_or_none()
+    if delete_flag:
+        if existing is not None:
+            _remove_file_quiet(existing.image_path)
+            await session.delete(existing)
+        return
+    new_path = await _save_message_image_file(event_id, message_key, upload)
+    if new_path is None:
+        return  # ничего не загрузили — оставить как есть
+    if existing is not None:
+        if existing.image_path != new_path:
+            _remove_file_quiet(existing.image_path)
+        existing.image_path = new_path
+        existing.attachment = None
+        existing.attachment_error = None
+    else:
+        session.add(
+            EventMessageImage(event_id=event_id, message_key=message_key, image_path=new_path)
+        )
+
+
+async def _event_msg_image_keys(session: AsyncSession, event_id: int) -> dict:
+    rows = (
+        await session.execute(
+            select(EventMessageImage.message_key).where(EventMessageImage.event_id == event_id)
+        )
+    ).scalars().all()
+    return {k: True for k in rows}
 
 
 def _parse_optional_str(value: str | None) -> str | None:
@@ -83,6 +152,7 @@ async def new_event_form(
             "event": None,
             "defaults": DEFAULT_TEXTS,
             "error": None,
+            "msg_images": {},
         },
     )
 
@@ -115,7 +185,19 @@ async def create_event_submit(
     send_contacts_saved: str | None = Form(None),
     qr_file: UploadFile | None = None,
     google_sheet_url: str = Form(""),
+    image_receipt_received: UploadFile | None = None,
+    image_contacts_saved: UploadFile | None = None,
+    image_after_payment: UploadFile | None = None,
+    image_receipt_received_delete: str | None = Form(None),
+    image_contacts_saved_delete: str | None = Form(None),
+    image_after_payment_delete: str | None = Form(None),
 ):
+    msg_image_inputs = [
+        ("receipt_received", image_receipt_received, image_receipt_received_delete),
+        ("contacts_saved", image_contacts_saved, image_contacts_saved_delete),
+        ("after_payment", image_after_payment, image_after_payment_delete),
+    ]
+
     form_values = {
         "name": name,
         "keyword": keyword,
@@ -158,6 +240,7 @@ async def create_event_submit(
                 "event": form_values,
                 "defaults": DEFAULT_TEXTS,
                 "error": "Проверьте числовые поля и даты — введены некорректные значения.",
+                "msg_images": {},
             },
             status_code=400,
         )
@@ -173,6 +256,7 @@ async def create_event_submit(
                 "event": form_values,
                 "defaults": DEFAULT_TEXTS,
                 "error": _keyword_conflict_message(conflict),
+                "msg_images": {},
             },
             status_code=400,
         )
@@ -206,6 +290,10 @@ async def create_event_submit(
     )
 
     event.google_sheet_url = _parse_optional_str(google_sheet_url)
+
+    for key, upload, delete_flag in msg_image_inputs:
+        await _process_message_image(session, event.id, key, upload, bool(delete_flag))
+
     try:
         await session.commit()
     except IntegrityError:
@@ -225,10 +313,33 @@ async def create_event_submit(
                 "event": form_values,
                 "defaults": DEFAULT_TEXTS,
                 "error": msg,
+                "msg_images": {},
             },
             status_code=400,
         )
     return RedirectResponse(url="/events", status_code=303)
+
+
+@router.get("/events/{event_id}/message-image/{message_key}")
+async def event_message_image(
+    event_id: int,
+    message_key: str,
+    user: str = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    from fastapi import HTTPException
+
+    row = (
+        await session.execute(
+            select(EventMessageImage).where(
+                EventMessageImage.event_id == event_id,
+                EventMessageImage.message_key == message_key,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or not row.image_path or not os.path.exists(row.image_path):
+        raise HTTPException(status_code=404, detail="Изображение не найдено")
+    return FileResponse(row.image_path)
 
 
 @router.get("/events/{event_id}/qr")
@@ -267,6 +378,7 @@ async def edit_event_form(
             "event": event,
             "defaults": DEFAULT_TEXTS,
             "error": None,
+            "msg_images": await _event_msg_image_keys(session, event.id),
         },
     )
 
@@ -300,8 +412,20 @@ async def update_event_submit(
     send_contacts_saved: str | None = Form(None),
     qr_file: UploadFile | None = None,
     google_sheet_url: str = Form(""),
+    image_receipt_received: UploadFile | None = None,
+    image_contacts_saved: UploadFile | None = None,
+    image_after_payment: UploadFile | None = None,
+    image_receipt_received_delete: str | None = Form(None),
+    image_contacts_saved_delete: str | None = Form(None),
+    image_after_payment_delete: str | None = Form(None),
 ):
     from fastapi import HTTPException
+
+    msg_image_inputs = [
+        ("receipt_received", image_receipt_received, image_receipt_received_delete),
+        ("contacts_saved", image_contacts_saved, image_contacts_saved_delete),
+        ("after_payment", image_after_payment, image_after_payment_delete),
+    ]
 
     event = await session.get(Event, event_id)
     if event is None:
@@ -353,6 +477,7 @@ async def update_event_submit(
                 "event": form_values,
                 "defaults": DEFAULT_TEXTS,
                 "error": "Проверьте числовые поля и даты — введены некорректные значения.",
+                "msg_images": await _event_msg_image_keys(session, event.id),
             },
             status_code=400,
         )
@@ -369,6 +494,7 @@ async def update_event_submit(
                     "event": form_values,
                     "defaults": DEFAULT_TEXTS,
                     "error": _keyword_conflict_message(conflict),
+                    "msg_images": await _event_msg_image_keys(session, event.id),
                 },
                 status_code=400,
             )
@@ -428,9 +554,13 @@ async def update_event_submit(
                         "Не удалось записать в новую таблицу. Проверьте, что ссылка "
                         "верна и таблица расшарена service account на редактирование."
                     ),
+                    "msg_images": {},
                 },
                 status_code=400,
             )
+
+    for key, upload, delete_flag in msg_image_inputs:
+        await _process_message_image(session, event.id, key, upload, bool(delete_flag))
 
     try:
         await session.commit()
@@ -451,6 +581,7 @@ async def update_event_submit(
                 "event": form_values,
                 "defaults": DEFAULT_TEXTS,
                 "error": msg,
+                "msg_images": await _event_msg_image_keys(session, event.id),
             },
             status_code=400,
         )
@@ -495,6 +626,11 @@ async def delete_event_submit(
     )
     receipt_paths = [row[0] for row in result.all() if row[0]]
 
+    result = await session.execute(
+        select(EventMessageImage.image_path).where(EventMessageImage.event_id == event_id)
+    )
+    msg_image_paths = [row[0] for row in result.all() if row[0]]
+
     await delete_event(session, event_id)
     await session.commit()
 
@@ -509,5 +645,8 @@ async def delete_event_submit(
             os.remove(qr_image_path)
         except OSError:
             pass
+
+    for path in msg_image_paths:
+        _remove_file_quiet(path)
 
     return RedirectResponse(url="/events", status_code=303)

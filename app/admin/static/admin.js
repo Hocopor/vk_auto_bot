@@ -73,6 +73,24 @@
         });
     }
 
+    /* ---- 3b. Превью картинок к сообщениям бота ------------------------- */
+    var msgImageInputs = document.querySelectorAll(".msg-image-input[data-preview]");
+    msgImageInputs.forEach(function (input) {
+        var preview = document.getElementById(input.getAttribute("data-preview"));
+        if (!preview) return;
+        input.addEventListener("change", function () {
+            var file = this.files && this.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function (ev) {
+                preview.src = ev.target.result;
+                preview.classList.remove("is-hidden");
+                preview.style.display = "block";
+            };
+            reader.readAsDataURL(file);
+        });
+    });
+
     /* ---- 4. Переключатель темы ----------------------------------------- */
     function getTheme() {
         return localStorage.getItem("theme") || "light";

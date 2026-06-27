@@ -204,6 +204,21 @@
                     <div class="field">
                         <textarea name="msg_receipt_received" rows="3">{{ event.msg_receipt_received if event and event.msg_receipt_received else defaults.msg_receipt_received }}</textarea>
                     </div>
+                    {% set mi = msg_images|default({}) %}
+                    <div class="field msg-image-field">
+                        <label class="field-label">Изображение к сообщению</label>
+                        <input type="file" name="image_receipt_received" accept="image/*" class="msg-image-input" data-preview="img-receipt_received">
+                        <img src="{% if event and event.id and mi.get('receipt_received') %}/events/{{ event.id }}/message-image/receipt_received{% endif %}"
+                             alt="Изображение" class="qr-preview{% if not (event and event.id and mi.get('receipt_received')) %} is-hidden{% endif %}" id="img-receipt_received">
+                        {% if event and event.id and mi.get('receipt_received') %}
+                        <label class="check">
+                            <input type="checkbox" name="image_receipt_received_delete">
+                            <span>
+                                <span class="check-title">Удалить изображение</span>
+                            </span>
+                        </label>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
 
@@ -221,6 +236,21 @@
                     <div class="field">
                         <textarea name="msg_after_payment" rows="3">{{ event.msg_after_payment if event and event.msg_after_payment else defaults.msg_after_payment }}</textarea>
                     </div>
+                    {% set mi = msg_images|default({}) %}
+                    <div class="field msg-image-field">
+                        <label class="field-label">Изображение к сообщению</label>
+                        <input type="file" name="image_after_payment" accept="image/*" class="msg-image-input" data-preview="img-after_payment">
+                        <img src="{% if event and event.id and mi.get('after_payment') %}/events/{{ event.id }}/message-image/after_payment{% endif %}"
+                             alt="Изображение" class="qr-preview{% if not (event and event.id and mi.get('after_payment')) %} is-hidden{% endif %}" id="img-after_payment">
+                        {% if event and event.id and mi.get('after_payment') %}
+                        <label class="check">
+                            <input type="checkbox" name="image_after_payment_delete">
+                            <span>
+                                <span class="check-title">Удалить изображение</span>
+                            </span>
+                        </label>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
 
@@ -237,6 +267,21 @@
                     {{ var_chips("msg_contacts_saved", all_tokens) }}
                     <div class="field">
                         <textarea name="msg_contacts_saved" rows="3">{{ event.msg_contacts_saved if event and event.msg_contacts_saved else defaults.msg_contacts_saved }}</textarea>
+                    </div>
+                    {% set mi = msg_images|default({}) %}
+                    <div class="field msg-image-field">
+                        <label class="field-label">Изображение к сообщению</label>
+                        <input type="file" name="image_contacts_saved" accept="image/*" class="msg-image-input" data-preview="img-contacts_saved">
+                        <img src="{% if event and event.id and mi.get('contacts_saved') %}/events/{{ event.id }}/message-image/contacts_saved{% endif %}"
+                             alt="Изображение" class="qr-preview{% if not (event and event.id and mi.get('contacts_saved')) %} is-hidden{% endif %}" id="img-contacts_saved">
+                        {% if event and event.id and mi.get('contacts_saved') %}
+                        <label class="check">
+                            <input type="checkbox" name="image_contacts_saved_delete">
+                            <span>
+                                <span class="check-title">Удалить изображение</span>
+                            </span>
+                        </label>
+                        {% endif %}
                     </div>
                 </div>
             </div>

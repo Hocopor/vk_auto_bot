@@ -37,7 +37,7 @@ async def _run_bot(token: str) -> None:
     upload_api = API(token=token)
     register_handlers(bot, upload_api)
     logger.info("Starting VK bot (Long Poll) + worker...")
-    worker_task = asyncio.create_task(worker_loop(bot))
+    worker_task = asyncio.create_task(worker_loop(bot, upload_api=upload_api))
     try:
         await bot.run_polling()
     finally:
