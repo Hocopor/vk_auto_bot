@@ -554,6 +554,8 @@ UX модерации, потом тяжёлые UI-переделки.
       e2e на живом сервере (SQLite-QA): «Все» q=Соколова→Анна, q=42→пусто (номер не ищется);
       event q=42→Аня по билету, q=Орлов→Дмитрий. Скрины `data/screens/8_11_search_{all,event}.png`.
       **Скилы:** fastapi-patterns, test-driven-development, agent-browser. **Агент:** coder (sonnet).
+      **ЗАДЕПЛОЕНО** (коммит `cba3bc0`): git pull --ff-only /opt+/root → restart → smoke
+      `:8080/login=200`, `/participants=303`. Миграций нет.
 
 ### 8.12 Финальный деплой + приёмка (идёт ПОСЛЕДНИМ — после 8.13 и 8.14)
 - [ ] **8.12.1** Полный `pytest` зелёный, alembic head, деплой всех групп на боевой,
