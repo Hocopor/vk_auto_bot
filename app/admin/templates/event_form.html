@@ -162,7 +162,7 @@
             <div class="field">
                 <label for="f-sheet-url">Ссылка на Google-таблицу</label>
                 <input type="text" id="f-sheet-url" name="google_sheet_url" value="{{ event.google_sheet_url if event and event.google_sheet_url else '' }}" placeholder="https://docs.google.com/spreadsheets/d/...">
-                <p class="field-hint">Таблица должна быть доступна для редактирования сервисным аккаунтом.</p>
+                <p class="field-hint">Таблица должна быть расшарена service account на редактирование. При смене ссылки у идущего мероприятия данные перенесутся в новую таблицу сразу после сохранения; пусто — публичная HTML-таблица.</p>
             </div>
         </div>
 

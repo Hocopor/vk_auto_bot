@@ -303,8 +303,16 @@ async def test_create_event_with_send_qr(client, maker):
         assert event.send_qr is True
 
 
-async def test_edit_event_google_sheet_url(client, maker):
-    """Editing event updates google_sheet_url."""
+async def test_edit_event_google_sheet_url(client, maker, monkeypatch):
+    """Editing event updates google_sheet_url (and migrates data into the
+    new sheet, which we mock out here)."""
+    calls = []
+
+    async def fake_sync(session, event_id, url, *, raise_on_error=False):
+        calls.append((event_id, url, raise_on_error))
+
+    monkeypatch.setattr("app.sheets.sync.sync_event_to_sheet", fake_sync)
+
     await client.post("/events", data=event_form_data(), follow_redirects=False)
 
     async with maker() as session:
@@ -324,6 +332,118 @@ async def test_edit_event_google_sheet_url(client, maker):
     async with maker() as session:
         updated = await session.get(Event, event_id)
         assert updated.google_sheet_url == "https://docs.google.com/spreadsheets/d/new_url/edit"
+
+    assert calls == [
+        (event_id, "https://docs.google.com/spreadsheets/d/new_url/edit", True)
+    ]
+
+
+async def test_edit_event_sheet_url_unchanged_no_migration(client, maker, monkeypatch):
+    """Сохранение мероприятия без изменения ссылки на таблицу не запускает
+    миграцию (sync_event_to_sheet не вызывается)."""
+    calls = []
+
+    async def fake_sync(session, event_id, url, *, raise_on_error=False):
+        calls.append((event_id, url, raise_on_error))
+
+    monkeypatch.setattr("app.sheets.sync.sync_event_to_sheet", fake_sync)
+
+    same_url = "https://docs.google.com/spreadsheets/d/same_url/edit"
+    await client.post(
+        "/events", data=event_form_data(google_sheet_url=same_url), follow_redirects=False
+    )
+
+    async with maker() as session:
+        result = await session.execute(select(Event))
+        event = result.scalars().one()
+        event_id = event.id
+
+    resp = await client.post(
+        f"/events/{event_id}",
+        data=event_form_data(name="Переименовано", google_sheet_url=same_url),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert calls == []
+
+    async with maker() as session:
+        updated = await session.get(Event, event_id)
+        assert updated.google_sheet_url == same_url
+
+
+async def test_edit_event_clear_sheet_url_no_migration(client, maker, monkeypatch):
+    """Очистка ссылки (Google -> своя HTML-таблица) не запускает миграцию,
+    старая таблица просто отвязывается."""
+    calls = []
+
+    async def fake_sync(session, event_id, url, *, raise_on_error=False):
+        calls.append((event_id, url, raise_on_error))
+
+    monkeypatch.setattr("app.sheets.sync.sync_event_to_sheet", fake_sync)
+
+    await client.post(
+        "/events",
+        data=event_form_data(
+            google_sheet_url="https://docs.google.com/spreadsheets/d/old_url/edit"
+        ),
+        follow_redirects=False,
+    )
+
+    async with maker() as session:
+        result = await session.execute(select(Event))
+        event = result.scalars().one()
+        event_id = event.id
+
+    resp = await client.post(
+        f"/events/{event_id}",
+        data=event_form_data(google_sheet_url=""),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert calls == []
+
+    async with maker() as session:
+        updated = await session.get(Event, event_id)
+        assert updated.google_sheet_url is None
+
+
+async def test_edit_event_sheet_migration_failure_blocks_save(client, maker, monkeypatch):
+    """Если миграция в новую таблицу не удалась — сохранение откатывается
+    целиком (включая остальные поля формы), показывается форма с ошибкой,
+    в БД остаётся старая ссылка."""
+
+    async def failing_sync(session, event_id, url, *, raise_on_error=False):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.sheets.sync.sync_event_to_sheet", failing_sync)
+
+    old_url = "https://docs.google.com/spreadsheets/d/old_url/edit"
+    await client.post(
+        "/events",
+        data=event_form_data(name="До ошибки", google_sheet_url=old_url),
+        follow_redirects=False,
+    )
+
+    async with maker() as session:
+        result = await session.execute(select(Event))
+        event = result.scalars().one()
+        event_id = event.id
+
+    resp = await client.post(
+        f"/events/{event_id}",
+        data=event_form_data(
+            name="После ошибки",
+            google_sheet_url="https://docs.google.com/spreadsheets/d/broken_url/edit",
+        ),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    assert "не удалось записать" in resp.text.lower()
+
+    async with maker() as session:
+        updated = await session.get(Event, event_id)
+        assert updated.google_sheet_url == old_url
+        assert updated.name == "До ошибки"
 
 
 async def test_create_duplicate_active_keyword_blocked(client, maker):

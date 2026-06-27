@@ -307,6 +307,8 @@ async def update_event_submit(
     if event is None:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
 
+    old_sheet_url = event.google_sheet_url
+
     form_values = {
         "id": event.id,
         "name": name,
@@ -393,12 +395,42 @@ async def update_event_submit(
     event.send_need_contacts = bool(send_need_contacts)
     event.send_contacts_saved = bool(send_contacts_saved)
     event.google_sheet_url = _parse_optional_str(google_sheet_url)
+    new_sheet_url = event.google_sheet_url
 
     new_qr_path = await _save_qr_file(qr_file)
     if new_qr_path:
         event.qr_image_path = new_qr_path
         event.qr_attachment = None
         event.qr_last_error = None
+
+    if new_sheet_url is not None and new_sheet_url != old_sheet_url:
+        # HTML -> Google либо Google -> другой Google: сразу переносим данные
+        # из БД в новую таблицу. Старую (если была) просто отвязываем —
+        # внешний Google-документ не трогаем.
+        from app.sheets.sync import sync_event_to_sheet
+
+        try:
+            await sync_event_to_sheet(session, event.id, new_sheet_url, raise_on_error=True)
+        except Exception:
+            logger.exception(
+                "Sheet migration failed for event %s (url=%s)", event.id, new_sheet_url
+            )
+            await session.rollback()
+            return templates.TemplateResponse(
+                "event_form.html",
+                {
+                    "request": request,
+                    "user": user,
+                    "mode": "edit",
+                    "event": form_values,
+                    "defaults": DEFAULT_TEXTS,
+                    "error": (
+                        "Не удалось записать в новую таблицу. Проверьте, что ссылка "
+                        "верна и таблица расшарена service account на редактирование."
+                    ),
+                },
+                status_code=400,
+            )
 
     try:
         await session.commit()

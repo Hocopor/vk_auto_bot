@@ -1,5 +1,6 @@
 """Tests for Google Sheets sync logic (no real API calls)."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -158,3 +159,39 @@ async def test_sync_no_records_clears_data():
             )
 
     mock_ws.delete_rows.assert_called_once_with(2, 2)
+
+
+@pytest.mark.asyncio
+async def test_sync_raise_on_error_true_propagates_exception():
+    from app.sheets.sync import sync_event_to_sheet
+
+    mock_session = MagicMock()
+
+    with patch("app.sheets.sync.collect_approved_records", return_value=[]):
+        with patch("app.sheets.client.get_client", side_effect=RuntimeError("auth failed")):
+            with pytest.raises(RuntimeError, match="auth failed"):
+                await sync_event_to_sheet(
+                    mock_session,
+                    event_id=1,
+                    google_sheet_url="https://docs.google.com/spreadsheets/d/abc/edit",
+                    raise_on_error=True,
+                )
+
+
+@pytest.mark.asyncio
+async def test_sync_raise_on_error_false_swallows_exception(caplog):
+    from app.sheets.sync import sync_event_to_sheet
+
+    mock_session = MagicMock()
+
+    with patch("app.sheets.sync.collect_approved_records", return_value=[]):
+        with patch("app.sheets.client.get_client", side_effect=RuntimeError("auth failed")):
+            with caplog.at_level(logging.ERROR):
+                # default raise_on_error=False — должно проглотить, не упасть
+                await sync_event_to_sheet(
+                    mock_session,
+                    event_id=1,
+                    google_sheet_url="https://docs.google.com/spreadsheets/d/abc/edit",
+                )
+
+    assert any("Failed to sync event" in record.message for record in caplog.records)

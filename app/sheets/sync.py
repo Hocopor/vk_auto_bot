@@ -62,13 +62,17 @@ async def sync_event_to_sheet(
     session: AsyncSession,
     event_id: int,
     google_sheet_url: str,
+    *,
+    raise_on_error: bool = False,
 ) -> None:
     """Sync approved poster numbers to the given Google Sheet.
 
     - If sheet is empty -> create header row + data
     - If sheet has header -> verify format, correct if needed, then upsert data
     - Extra rows beyond data are deleted
-    - Best-effort: catches and logs all errors, never raises
+    - Best-effort by default: catches and logs all errors, never raises.
+      Pass raise_on_error=True to propagate the exception (used for synchronous
+      validation when an admin changes the sheet link in the form).
     """
     from app.sheets.client import get_client
 
@@ -118,3 +122,5 @@ async def sync_event_to_sheet(
             event_id,
             google_sheet_url,
         )
+        if raise_on_error:
+            raise
