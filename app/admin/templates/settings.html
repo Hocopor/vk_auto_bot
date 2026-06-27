@@ -32,6 +32,20 @@
                     </span>
                 </label>
             </div>
+            <div class="field">
+                <label for="f-receipt-age">Макс. возраст чека для авто-подтверждения (дней)</label>
+                <input type="number" id="f-receipt-age" name="receipt_max_age_days" min="0" value="{{ receipt_max_age_days }}">
+                <p class="field-hint">Чек с датой старше — не подтверждается автоматически, уходит в ручную модерацию.</p>
+            </div>
+            <div class="field">
+                <label class="check">
+                    <input type="checkbox" name="autoconfirm_without_date" value="true" {% if autoconfirm_without_date %}checked{% endif %}>
+                    <span>
+                        <span class="check-title">Авто-подтверждать чеки без распознанной даты</span>
+                        <span class="check-hint">Если дату на чеке распознать не удалось. По умолчанию выкл — такие чеки уходят в ручную модерацию.</span>
+                    </span>
+                </label>
+            </div>
         </div>
 
         <div class="panel-section">

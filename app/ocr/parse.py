@@ -1,4 +1,5 @@
 import re
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 # Денежные значения: 1 000,00 / 1000.00 / 1 000 ₽ / 500р и т.п.
@@ -92,12 +93,86 @@ def find_recipient(text: str, expected: str | None) -> bool:
     return False
 
 
+_MONTHS_RU = {
+    "января": 1, "январь": 1, "февраля": 2, "февраль": 2, "марта": 3, "март": 3,
+    "апреля": 4, "апрель": 4, "мая": 5, "май": 5, "июня": 6, "июнь": 6,
+    "июля": 7, "июль": 7, "августа": 8, "август": 8, "сентября": 9, "сентябрь": 9,
+    "октября": 10, "октябрь": 10, "ноября": 11, "ноябрь": 11, "декабря": 12, "декабрь": 12,
+}
+
+# dd.mm.yyyy / dd.mm.yy / dd-mm-yyyy / dd/mm/yyyy (день первым — формат РФ)
+_DATE_DMY_RE = re.compile(r"\b(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})\b")
+# ISO: yyyy-mm-dd
+_DATE_ISO_RE = re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b")
+# dd <месяц словом> yyyy
+_DATE_RU_RE = re.compile(r"\b(\d{1,2})\s+([а-яё]+)\s+(\d{4})\b", re.IGNORECASE)
+
+_SIGNATURE_RE = re.compile(
+    r"(?:номер операци\w*|идентификатор операци\w*|номер документа|"
+    r"номер квитанци\w*|номер чека|операци\w*|квитанци\w*|чек|документ)"
+    r"\s*[:№#\-]?\s*([A-Za-zА-Яа-я0-9\-]{5,40})",
+    re.IGNORECASE,
+)
+
+
+def _safe_date(year: int, month: int, day: int) -> date | None:
+    if year < 100:
+        year += 2000
+    if not (1 <= month <= 12 and 1 <= day <= 31 and 2000 <= year <= 2100):
+        return None
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def parse_receipt_date(text: str) -> date | None:
+    """Извлечь дату чека из распознанного текста. Возвращает первую валидную дату
+    в порядке появления в тексте, либо None."""
+    if not text:
+        return None
+    candidates: list[tuple[int, date]] = []
+    for m in _DATE_ISO_RE.finditer(text):
+        d = _safe_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        if d:
+            candidates.append((m.start(), d))
+    for m in _DATE_DMY_RE.finditer(text):
+        d = _safe_date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        if d:
+            candidates.append((m.start(), d))
+    for m in _DATE_RU_RE.finditer(text):
+        month = _MONTHS_RU.get(m.group(2).lower())
+        if month:
+            d = _safe_date(int(m.group(3)), month, int(m.group(1)))
+            if d:
+                candidates.append((m.start(), d))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda c: c[0])
+    return candidates[0][1]
+
+
+def parse_receipt_signature(text: str) -> str | None:
+    """Извлечь реквизит-подпись чека (номер операции/документа) для глобального
+    дедупа. Best-effort: None, если не найдено. Нормализуется в верхний регистр."""
+    if not text:
+        return None
+    m = _SIGNATURE_RE.search(text)
+    if not m:
+        return None
+    token = m.group(1).strip().upper()
+    # отсекаем чисто словесные ложные срабатывания: должна быть хотя бы одна цифра
+    if not any(ch.isdigit() for ch in token):
+        return None
+    return token
+
+
 def parse_receipt(raw_text: str, expected_recipient: str | None) -> dict:
-    """Высокоуровневая обёртка: извлечь сумму и проверить получателя."""
-    amount = parse_amount(raw_text)
-    recipient_found = find_recipient(raw_text, expected_recipient)
+    """Высокоуровневая обёртка: сумма, получатель, дата, реквизит-подпись."""
     return {
-        "amount": amount,
-        "recipient_found": recipient_found,
+        "amount": parse_amount(raw_text),
+        "recipient_found": find_recipient(raw_text, expected_recipient),
+        "receipt_date": parse_receipt_date(raw_text),
+        "signature": parse_receipt_signature(raw_text),
         "raw_text": raw_text,
     }

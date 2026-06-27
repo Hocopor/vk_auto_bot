@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import BotDialogState, Event, Purchase, PurchaseStatus
+from app.core.services import abuse
 from app.core.services.participants import parse_name_and_phone, upsert_participant
 from app.core.services.purchases import decide_after_ocr
 
@@ -150,6 +151,8 @@ async def process_receipt(
     ocr_confidence: float | None = None,
     recipient_found: bool = False,
     is_duplicate: bool = False,
+    receipt_date=None,
+    receipt_signature: str | None = None,
 ) -> Purchase:
     """Фиксирует участника и создаёт Purchase, решая её статус (или manual_review при дубле)."""
     name, phone = parse_name_and_phone(message_text)
@@ -172,6 +175,8 @@ async def process_receipt(
         ocr_raw_text=ocr_raw_text,
         ocr_amount=ocr_amount,
         ocr_confidence=ocr_confidence,
+        receipt_date=receipt_date,
+        receipt_signature=receipt_signature,
         status=PurchaseStatus.pending_ocr,
     )
     session.add(purchase)
@@ -184,10 +189,17 @@ async def process_receipt(
             vk_user_id,
             receipt_hash,
         )
-        purchase.status = PurchaseStatus.manual_review
-        purchase.moderated_by = None
-        await session.flush()
-    else:
-        await decide_after_ocr(session, purchase, event, recipient_found)
+
+    max_age_days, allow_without_date = await abuse.load_gate_config(session)
+    await decide_after_ocr(
+        session,
+        purchase,
+        event,
+        recipient_found,
+        is_duplicate=is_duplicate,
+        receipt_date=receipt_date,
+        max_age_days=max_age_days,
+        allow_without_date=allow_without_date,
+    )
 
     return purchase

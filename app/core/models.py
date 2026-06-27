@@ -1,10 +1,11 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -144,6 +145,11 @@ class Purchase(Base):
         index=True,
     )
     ocr_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    receipt_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    receipt_signature: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    needs_attention: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"), index=True
+    )
     numbers_assigned: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, index=True
     )

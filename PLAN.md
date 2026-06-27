@@ -400,24 +400,31 @@ UX модерации, потом тяжёлые UI-переделки.
       **Скилы:** fastapi-patterns, test-driven-development; agent-browser (превью).
       **Агент:** coder (sonnet).
 
-#### 8.3 Авто-подтверждение + abuse (edit.md #3, #12)
-- [ ] **8.3.1 Фикс evaluate_payment.** В `purchases.py`: убрать требование точной
-      кратности (`amount % price == 0`). Условие approved при auto_confirm:
-      `amount >= price AND recipient_found AND not abuse`. posters_count = floor.
-- [ ] **8.3.2 Дата чека.** В `ocr/parse.py` добавить `parse_receipt_date(text)`
-      (регэксп дат `dd.mm.yyyy`, `dd month yyyy` рус., ISO). Колонка
-      `Purchase.receipt_date` (Date, nullable) + миграция. Заполнять при приёме чека.
-- [ ] **8.3.3 Дедуп + abuse-гейт.** Сервис `core/services/abuse.py`:
-      `is_duplicate_global(session, receipt_hash, exclude_purchase_id=None)` — есть ли
-      approved/любой Purchase с тем же hash в ЛЮБОМ мероприятии. `signature` дедуп по
-      (amount+date+recipient_norm). `is_date_fresh(receipt_date, now, max_age_days)` —
-      дата не в будущем и не старше N дней (N в .env/настройке, дефолт 14).
-      decide_after_ocr: если auto_confirm И платёж валиден, НО (дубль глобально ИЛИ
-      дата несвежая) → manual_review с флагом `needs_attention` (см. 8.9 красный флаг).
-      Дубль больше НЕ просто помечается — блокирует авто-апрув. КП: повторный чек
-      и чек с будущей/старой датой не авто-подтверждаются; «чистый» — авто-подтверждается.
-      **Скилы:** test-driven-development, fastapi-patterns. **Агент:** coder (sonnet);
-      ревью гейта — architect (opus) если логика дедупа окажется нетривиальной.
+#### 8.3 Авто-подтверждение + abuse (edit.md #3, #12) ✅ ЗАВЕРШЕНО (код+тесты; деплой ждёт SSH_PASS)
+- [x] **8.3.1 Фикс evaluate_payment.** `purchases.py`: убрано требование кратности
+      (`amount % price == 0`). Условие auto-approve: `amount >= price AND recipient_found`
+      (+ abuse-гейт). posters_count = floor (count_posters).
+- [x] **8.3.2 Дата чека.** `ocr/parse.py::parse_receipt_date(text)` (dd.mm.yyyy/yy,
+      ISO yyyy-mm-dd, «dd месяц yyyy» рус.; возвращает первую валидную дату). Колонка
+      `Purchase.receipt_date` (Date) + миграция `0006`. Заполняется в handlers из OCR.
+- [x] **8.3.3 Дедуп + abuse-гейт.** Сервис `core/services/abuse.py`:
+      `is_duplicate_global(session, receipt_hash, receipt_signature, exclude_purchase_id)`
+      — другой «живой» (не rejected/revoked) Purchase с тем же хэшем файла ИЛИ той же
+      подписью-реквизитом в ЛЮБОМ мероприятии. Реквизит = `parse_receipt_signature` (номер
+      операции/документа, колонка `Purchase.receipt_signature`). `is_date_fresh(receipt_date,
+      now, max_age_days, allow_without_date)` — дата не в будущем и не старше N дней (по
+      локальной TZ). `load_gate_config` читает из app_settings. decide_after_ocr: при
+      auto_confirm И валидном платеже, но (локальный/глобальный дубль ИЛИ несвежая дата ИЛИ
+      нет даты при выкл. allow_without_date) → manual_review + флаг `Purchase.needs_attention`
+      (видимый красный флаг — 8.9). **Решения заказчика (AskUserQuestion 2026-06-27):** окно
+      свежести = ОБЩАЯ настройка `/settings` (app_settings `receipt_max_age_days`, дефолт **3
+      дня**); галочка `autoconfirm_without_date` (дефолт ВЫКЛ → чек без распознанной даты
+      уходит в ручную). Обе настройки добавлены в `/settings`.
+      **РЕЗУЛЬТАТ:** pytest **213 passed, 2 skipped** (+41 тест: ocr-дата/подпись, abuse,
+      decide-гейт, settings). Сделано оркестратором руками (сабагенты легли по лимиту сессии).
+      Миграция `0006_receipt_date_abuse` (receipt_date/receipt_signature/needs_attention +
+      индексы). **ДЕПЛОЙ НЕ ВЫПОЛНЕН:** в окружении нет `SSH_PASS` — нужен `alembic upgrade
+      head` (0006) на боевом + restart. Запушено в GitHub.
 
 ### P2 — Диалоговый флоу + данные участника
 

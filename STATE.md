@@ -2,6 +2,46 @@
 
 ## Текущая точка
 
+- **2026-06-27. ЭТАП 8.3 (Авто-подтверждение + abuse + дата чека) — КОД+ТЕСТЫ ГОТОВЫ, ДЕПЛОЙ ЖДЁТ.**
+  P1, ядро платёжного конвейера. edit.md #3, #12. **Делал ОРКЕСТРАТОР РУКАМИ** — сабагенты
+  (coder) легли по лимиту сессии Anthropic; реализация по уже готовому ТЗ оркестратора.
+  - **Решения заказчика (AskUserQuestion 2026-06-27) ДО кода:** (1) окно свежести чека =
+    ОБЩАЯ настройка `/settings`, дефолт **3 дня** (не .env, не пер-ивент); (2) добавлена
+    галочка «авто-подтверждать чеки без распознанной даты» (дефолт ВЫКЛ → без даты в ручную).
+  - **Реализация:**
+    - `evaluate_payment` (`purchases.py`): убрано `amount % price == 0` — auto-approve при
+      `amount >= price AND recipient_found` (+ abuse-гейт), posters = floor.
+    - `ocr/parse.py`: `parse_receipt_date` (dd.mm.yyyy/yy, ISO, «dd месяц yyyy» рус., первая
+      валидная по позиции) + `parse_receipt_signature` (номер операции/документа/чека/
+      квитанции, требует ≥1 цифры, upper). `parse_receipt` теперь отдаёт `receipt_date` и
+      `signature`.
+    - `core/services/abuse.py` (НОВЫЙ): `is_duplicate_global(session, hash, signature,
+      exclude_purchase_id)` — другой НЕ rejected/revoked Purchase с тем же хэшем ИЛИ подписью
+      в ЛЮБОМ мероприятии; `is_date_fresh(receipt_date, now, max_age_days, allow_without_date)`
+      (по локальной TZ через `timeutil.to_local`); `load_gate_config` (читает app_settings).
+    - `decide_after_ocr` (`purchases.py`): новые kwargs `is_duplicate/receipt_date/now/
+      max_age_days/allow_without_date`. При auto_confirm И валидном платеже → abuse-гейт; если
+      дубль (локальный/глобальный) ИЛИ несвежая/нет даты → manual_review + `needs_attention=True`.
+      Иначе approved. Если auto off / получатель не найден → manual_review БЕЗ флага.
+    - `dialog.process_receipt`: прокидывает receipt_date/receipt_signature в Purchase, читает
+      `abuse.load_gate_config`, всегда зовёт `decide_after_ocr` (ветка is_duplicate больше не
+      обходит decide — флаг ставится единообразно).
+    - `handlers._handle_receipt`: из OCR берёт receipt_date/signature, прокидывает в process_receipt.
+    - Модель `Purchase`: +`receipt_date`(Date), +`receipt_signature`(Text,index),
+      +`needs_attention`(Bool, server_default false, index). Миграция `0006_receipt_date_abuse`.
+    - `app_settings.py`: ключи `KEY_RECEIPT_MAX_AGE_DAYS`, `KEY_AUTOCONFIRM_WITHOUT_DATE`.
+    - `/settings` (route+settings.html): поле «макс. возраст чека (дней)» (дефолт 3) +
+      галочка «авто-подтверждать без даты» (дефолт выкл).
+  - **РЕЗУЛЬТАТ:** pytest **213 passed, 2 skipped** (было 172/2 на 8.2; +41 тест: даты/подпись
+    OCR, abuse-функции, decide-гейт все ветки, settings). Импорты без циклов
+    (abuse не тянет purchases). Миграция 0006 валидна (down=0005). **e2e:** UI настроек
+    покрыт httpx-тестами (поля рендерятся); сама логика конвейера — бот-сторона, без живого
+    ВК проверяется юнит/интеграц. тестами (live-прогон — заказчику). **ДЕПЛОЙ НЕ ВЫПОЛНЕН:**
+    в окружении НЕТ `SSH_PASS` → нужно: push (сделан) → `git pull` /opt+/root → `alembic
+    upgrade head` (0006!) → restart admin-web+vk-bot → smoke. Сделать в начале след. сессии,
+    когда будет SSH_PASS.
+  - **ВАЖНО для деплоя:** миграция 0006 добавляет 3 колонки в `purchases` — БЕЗ `alembic
+    upgrade head` боевая БД упадёт (нет колонок). Не забыть.
 - **2026-06-27. ЭТАП 8.2 (PDF-чеки: OCR + превью) — ЗАВЕРШЁН И ЗАДЕПЛОЕН (коммит `0f57d5b`).**
   edit.md #8. OCR теперь читает чеки в PDF, админка показывает превью PDF.
   - **Реализация (coder-сабагент по ТЗ оркестратора, скилы TDD+fastapi-patterns):**
@@ -382,14 +422,16 @@
 
 ## Следующий шаг
 
-- **ЭТАП 8.3 / группа P1 — Авто-подтверждение + abuse + дата чека (НОВАЯ СЕССИЯ).** По
-  плану `PLAN.md → Фаза 8, 8.3` (edit.md #3, #12). Кратко: (8.3.1) в `purchases.py::
-  evaluate_payment` убрать требование точной кратности `amount % price == 0` — условие
-  auto-approve: `amount >= price AND recipient_found AND not abuse`, posters_count=floor;
-  (8.3.2) `ocr/parse.py::parse_receipt_date(text)` — извлечь дату чека; (далее по пунктам
-  плана). Скилы: fastapi-patterns, test-driven-development. Агент: coder (sonnet).
-  ВНИМАНИЕ: 8.3 тесно связан с багом модерации (ниже) — авто-подтверждение и блокировка
-  approve без суммы пересекаются; возможно проектировать вместе.
+- **СНАЧАЛА: ЗАДЕПЛОИТЬ 8.3** (когда будет `SSH_PASS` в env). Код запушен в GitHub. Шаги:
+  `git pull` /opt+/root → **`alembic upgrade head` (миграция 0006 — 3 колонки в purchases,
+  ОБЯЗАТЕЛЬНО)** → restart admin-web+vk-bot → smoke :8080/login=200. Коннект — paramiko
+  `scripts/_ssh_run.py`, пароль в env `SSH_PASS` (в код НЕ писать).
+- **ЭТАП 8.4 / группа P2 — Новый сценарий бота: запрос ФИО+телефон после чека (НОВАЯ СЕССИЯ).**
+  По плану `PLAN.md → Фаза 8, 8.4` (edit.md #4). FSM-стадии диалога (awaiting_receipt →
+  awaiting_contacts → done), роутинг сообщений по стадии, ФИО vs публичное имя
+  (`public_name`/`vk_first_name`), тумблер+текст `msg_contacts_saved`. Скилы: TDD. Агент:
+  coder (sonnet); таблицу переходов FSM спроектировать оркестратору ДО кода.
+- **ЭТАП 8.3 (Авто-подтверждение + abuse) — КОД ГОТОВ, 213 passed, ДЕПЛОЙ ЖДЁТ SSH_PASS.**
 - **ЭТАП 8.2 (PDF-чеки) — ЗАВЕРШЁН И ЗАДЕПЛОЕН** (`0f57d5b`).
 - **ВАЖНО — после P1 (8.2, 8.3) чинить НОВЫЙ КОСЯК модерации** (см. «Текущая точка» и
   память `bug-moderation-status-churn-no-delivery.md`): статусная машина модерации не

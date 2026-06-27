@@ -7,6 +7,8 @@ KEY_VK_TOKEN = "vk_token"
 KEY_VK_GROUP_ID = "vk_group_id"
 KEY_ADMIN_TITLE = "admin_title"
 KEY_WINNERS_TAB_ENABLED = "winners_tab_enabled"
+KEY_RECEIPT_MAX_AGE_DAYS = "receipt_max_age_days"
+KEY_AUTOCONFIRM_WITHOUT_DATE = "autoconfirm_without_date"
 
 SECRET_KEYS = {KEY_VK_TOKEN}
 

@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from app.ocr.parse import (
@@ -5,7 +6,68 @@ from app.ocr.parse import (
     normalize_recipient,
     parse_amount,
     parse_receipt,
+    parse_receipt_date,
+    parse_receipt_signature,
 )
+
+
+# --- parse_receipt_date ---
+
+def test_parse_date_dmy_dotted():
+    assert parse_receipt_date("Дата 27.06.2026") == date(2026, 6, 27)
+
+
+def test_parse_date_dmy_two_digit_year():
+    assert parse_receipt_date("27.06.26") == date(2026, 6, 27)
+
+
+def test_parse_date_iso():
+    assert parse_receipt_date("2026-06-27") == date(2026, 6, 27)
+
+
+def test_parse_date_russian_month():
+    assert parse_receipt_date("27 июня 2026") == date(2026, 6, 27)
+
+
+def test_parse_date_russian_month_with_time():
+    assert parse_receipt_date("оплата 27 Июня 2026 12:30") == date(2026, 6, 27)
+
+
+def test_parse_date_none_when_absent():
+    assert parse_receipt_date("Никакой даты тут нет") is None
+
+
+def test_parse_date_invalid_rejected():
+    assert parse_receipt_date("45.13.2026") is None
+
+
+# --- parse_receipt_signature ---
+
+def test_parse_signature_operation_number():
+    assert parse_receipt_signature("Номер операции: 1234567890") == "1234567890"
+
+
+def test_parse_signature_identifier_upper():
+    assert parse_receipt_signature("Идентификатор операции ABC12345") == "ABC12345"
+
+
+def test_parse_signature_cheque_number():
+    sig = parse_receipt_signature("Чек № 7654321")
+    assert sig is not None and any(ch.isdigit() for ch in sig)
+
+
+def test_parse_signature_none_when_absent():
+    assert parse_receipt_signature("Просто текст без реквизитов") is None
+
+
+def test_parse_signature_none_when_no_digits():
+    # «операция выполнена» — словесное совпадение без цифр → None
+    assert parse_receipt_signature("Операция выполнена успешно") is None
+
+
+def test_parse_receipt_keys():
+    result = parse_receipt("Итого: 500 ₽ 27.06.2026 Номер операции 999888", "ООО Ромашка")
+    assert set(result.keys()) == {"amount", "recipient_found", "receipt_date", "signature", "raw_text"}
 
 
 def test_parse_amount_itogo_with_comma():

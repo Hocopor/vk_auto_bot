@@ -154,12 +154,16 @@ async def _handle_receipt(
     ocr_amount = None
     ocr_raw = None
     recipient_found = False
+    receipt_date = None
+    receipt_signature = None
     if ocr_recognize.tesseract_available():
         try:
             ocr_raw = await ocr_recognize.recognize_text(file_path)
             parsed = ocr_parse.parse_receipt(ocr_raw, event.expected_recipient)
             ocr_amount = parsed["amount"]
             recipient_found = parsed["recipient_found"]
+            receipt_date = parsed["receipt_date"]
+            receipt_signature = parsed["signature"]
         except Exception:
             logger.exception("OCR failed for file_path=%s", file_path)
 
@@ -176,6 +180,8 @@ async def _handle_receipt(
         ocr_raw_text=ocr_raw,
         recipient_found=recipient_found,
         is_duplicate=is_dup,
+        receipt_date=receipt_date,
+        receipt_signature=receipt_signature,
     )
 
     if event.send_receipt_received:

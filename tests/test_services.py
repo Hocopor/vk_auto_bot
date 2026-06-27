@@ -1,3 +1,4 @@
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -5,12 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from app.core import models  # noqa: F401  (наполняет Base.metadata)
+from app.core import timeutil
 from app.core.db import Base
 from app.core.models import Event, Participant, Purchase, PosterNumber, PurchaseStatus
 from app.core.placeholders import render, format_numbers
+from app.core.services import abuse
+from app.core.services import app_settings as app_settings_svc
 from app.core.services.participants import parse_phone, parse_name_and_phone, upsert_participant
 from app.core.services.numbers import count_posters, assign_unique, free_numbers, NumbersExhausted
-from app.core.services.purchases import decide_after_ocr, approve, revoke
+from app.core.services.purchases import decide_after_ocr, evaluate_payment, approve, revoke
 from app.core.services.winners import pick_winners
 from app.core.services.events import create_event, delete_event
 
@@ -217,7 +221,9 @@ async def test_decide_after_ocr_auto_confirm_approved(session):
         session, event.id, participant.id, ocr_amount=Decimal("500")
     )
 
-    status = await decide_after_ocr(session, purchase, event, recipient_found=True)
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=True, receipt_date=date.today()
+    )
     await session.commit()
 
     assert status == PurchaseStatus.approved
@@ -248,6 +254,284 @@ async def test_decide_after_ocr_wrong_recipient_manual_review(session):
     await session.commit()
 
     assert status == PurchaseStatus.manual_review
+
+
+# 9b. evaluate_payment (без требования кратности) -----------------------------------
+
+def test_evaluate_payment_covers_one_ticket():
+    assert evaluate_payment(Decimal("500"), Decimal("250"), True) is True
+
+
+def test_evaluate_payment_non_multiple_ok():
+    # сумма НЕ кратна цене, но покрывает билет — теперь True (остаток игнорируем)
+    assert evaluate_payment(Decimal("300"), Decimal("250"), True) is True
+
+
+def test_evaluate_payment_below_price():
+    assert evaluate_payment(Decimal("200"), Decimal("250"), True) is False
+
+
+def test_evaluate_payment_wrong_recipient():
+    assert evaluate_payment(Decimal("500"), Decimal("250"), False) is False
+
+
+def test_evaluate_payment_none_amount():
+    assert evaluate_payment(None, Decimal("250"), True) is False
+
+
+# 9c. abuse.is_date_fresh -----------------------------------------------------------
+
+_NOW = datetime(2026, 6, 27, 9, 0, tzinfo=timezone.utc)
+_TODAY = timeutil.to_local(_NOW).date()
+
+
+def test_is_date_fresh_today():
+    assert abuse.is_date_fresh(_TODAY, _NOW, max_age_days=3) is True
+
+
+def test_is_date_fresh_within_window():
+    assert abuse.is_date_fresh(_TODAY - timedelta(days=2), _NOW, max_age_days=3) is True
+
+
+def test_is_date_fresh_too_old():
+    assert abuse.is_date_fresh(_TODAY - timedelta(days=10), _NOW, max_age_days=3) is False
+
+
+def test_is_date_fresh_future():
+    assert abuse.is_date_fresh(_TODAY + timedelta(days=1), _NOW, max_age_days=3) is False
+
+
+def test_is_date_fresh_none_disallowed():
+    assert abuse.is_date_fresh(None, _NOW, allow_without_date=False) is False
+
+
+def test_is_date_fresh_none_allowed():
+    assert abuse.is_date_fresh(None, _NOW, allow_without_date=True) is True
+
+
+# 9d. abuse.is_duplicate_global -----------------------------------------------------
+
+async def test_is_duplicate_global_same_hash_active(session):
+    event = await make_event(session)
+    p1 = await make_participant(session, event.id, vk_user_id=111)
+    p2 = await make_participant(session, event.id, vk_user_id=222)
+    other = await make_purchase(
+        session, event.id, p1.id, receipt_hash="h1", status=PurchaseStatus.approved
+    )
+    current = await make_purchase(
+        session, event.id, p2.id, receipt_hash="h1", status=PurchaseStatus.pending_ocr
+    )
+    assert await abuse.is_duplicate_global(
+        session, "h1", exclude_purchase_id=current.id
+    ) is True
+    _ = other
+
+
+async def test_is_duplicate_global_rejected_does_not_count(session):
+    event = await make_event(session)
+    p1 = await make_participant(session, event.id, vk_user_id=111)
+    p2 = await make_participant(session, event.id, vk_user_id=222)
+    await make_purchase(
+        session, event.id, p1.id, receipt_hash="h2", status=PurchaseStatus.rejected
+    )
+    current = await make_purchase(
+        session, event.id, p2.id, receipt_hash="h2", status=PurchaseStatus.pending_ocr
+    )
+    assert await abuse.is_duplicate_global(
+        session, "h2", exclude_purchase_id=current.id
+    ) is False
+
+
+async def test_is_duplicate_global_same_signature(session):
+    event = await make_event(session)
+    p1 = await make_participant(session, event.id, vk_user_id=111)
+    p2 = await make_participant(session, event.id, vk_user_id=222)
+    await make_purchase(
+        session, event.id, p1.id, receipt_signature="OP123", status=PurchaseStatus.approved
+    )
+    current = await make_purchase(
+        session, event.id, p2.id, receipt_signature="OP123", status=PurchaseStatus.pending_ocr
+    )
+    assert await abuse.is_duplicate_global(
+        session, None, "OP123", exclude_purchase_id=current.id
+    ) is True
+
+
+async def test_is_duplicate_global_unique(session):
+    event = await make_event(session)
+    p1 = await make_participant(session, event.id, vk_user_id=111)
+    current = await make_purchase(
+        session, event.id, p1.id, receipt_hash="uniq", status=PurchaseStatus.pending_ocr
+    )
+    assert await abuse.is_duplicate_global(
+        session, "uniq", exclude_purchase_id=current.id
+    ) is False
+
+
+# 9e. abuse.load_gate_config --------------------------------------------------------
+
+async def test_load_gate_config_defaults(session):
+    max_age, allow = await abuse.load_gate_config(session)
+    assert max_age == 3
+    assert allow is False
+
+
+async def test_load_gate_config_custom(session):
+    await app_settings_svc.set_setting(
+        session, app_settings_svc.KEY_RECEIPT_MAX_AGE_DAYS, "7"
+    )
+    await app_settings_svc.set_setting(
+        session, app_settings_svc.KEY_AUTOCONFIRM_WITHOUT_DATE, "true"
+    )
+    await session.commit()
+    max_age, allow = await abuse.load_gate_config(session)
+    assert max_age == 7
+    assert allow is True
+
+
+# 9f. decide_after_ocr + abuse-гейт -------------------------------------------------
+
+async def _auto_event(session):
+    return await make_event(session, auto_confirm=True, price=Decimal("250"))
+
+
+async def test_decide_auto_fresh_date_approved(session):
+    event = await _auto_event(session)
+    p = await make_participant(session, event.id)
+    purchase = await make_purchase(
+        session, event.id, p.id, ocr_amount=Decimal("500"), receipt_hash="d1"
+    )
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=True,
+        receipt_date=_TODAY, now=_NOW,
+    )
+    await session.commit()
+    assert status == PurchaseStatus.approved
+    assert purchase.posters_count == 2
+    assert purchase.needs_attention is False
+
+
+async def test_decide_auto_future_date_flagged(session):
+    event = await _auto_event(session)
+    p = await make_participant(session, event.id)
+    purchase = await make_purchase(
+        session, event.id, p.id, ocr_amount=Decimal("500"), receipt_hash="d2"
+    )
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=True,
+        receipt_date=_TODAY + timedelta(days=2), now=_NOW,
+    )
+    await session.commit()
+    assert status == PurchaseStatus.manual_review
+    assert purchase.needs_attention is True
+
+
+async def test_decide_auto_old_date_flagged(session):
+    event = await _auto_event(session)
+    p = await make_participant(session, event.id)
+    purchase = await make_purchase(
+        session, event.id, p.id, ocr_amount=Decimal("500"), receipt_hash="d3"
+    )
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=True,
+        receipt_date=_TODAY - timedelta(days=30), now=_NOW,
+    )
+    await session.commit()
+    assert status == PurchaseStatus.manual_review
+    assert purchase.needs_attention is True
+
+
+async def test_decide_auto_no_date_disallowed_flagged(session):
+    event = await _auto_event(session)
+    p = await make_participant(session, event.id)
+    purchase = await make_purchase(
+        session, event.id, p.id, ocr_amount=Decimal("500"), receipt_hash="d4"
+    )
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=True,
+        receipt_date=None, now=_NOW, allow_without_date=False,
+    )
+    await session.commit()
+    assert status == PurchaseStatus.manual_review
+    assert purchase.needs_attention is True
+
+
+async def test_decide_auto_no_date_allowed_approved(session):
+    event = await _auto_event(session)
+    p = await make_participant(session, event.id)
+    purchase = await make_purchase(
+        session, event.id, p.id, ocr_amount=Decimal("500"), receipt_hash="d5"
+    )
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=True,
+        receipt_date=None, now=_NOW, allow_without_date=True,
+    )
+    await session.commit()
+    assert status == PurchaseStatus.approved
+
+
+async def test_decide_auto_local_duplicate_flagged(session):
+    event = await _auto_event(session)
+    p = await make_participant(session, event.id)
+    purchase = await make_purchase(
+        session, event.id, p.id, ocr_amount=Decimal("500"), receipt_hash="d6"
+    )
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=True,
+        receipt_date=_TODAY, now=_NOW, is_duplicate=True,
+    )
+    await session.commit()
+    assert status == PurchaseStatus.manual_review
+    assert purchase.needs_attention is True
+
+
+async def test_decide_auto_global_duplicate_flagged(session):
+    event = await _auto_event(session)
+    p1 = await make_participant(session, event.id, vk_user_id=111)
+    p2 = await make_participant(session, event.id, vk_user_id=222)
+    await make_purchase(
+        session, event.id, p1.id, receipt_hash="dup", status=PurchaseStatus.approved
+    )
+    purchase = await make_purchase(
+        session, event.id, p2.id, ocr_amount=Decimal("500"), receipt_hash="dup"
+    )
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=True,
+        receipt_date=_TODAY, now=_NOW,
+    )
+    await session.commit()
+    assert status == PurchaseStatus.manual_review
+    assert purchase.needs_attention is True
+
+
+async def test_decide_no_auto_confirm_no_flag(session):
+    event = await make_event(session, auto_confirm=False, price=Decimal("250"))
+    p = await make_participant(session, event.id)
+    purchase = await make_purchase(
+        session, event.id, p.id, ocr_amount=Decimal("500"), receipt_hash="d7"
+    )
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=True,
+        receipt_date=_TODAY, now=_NOW,
+    )
+    await session.commit()
+    assert status == PurchaseStatus.manual_review
+    assert purchase.needs_attention is False
+
+
+async def test_decide_wrong_recipient_no_flag(session):
+    event = await _auto_event(session)
+    p = await make_participant(session, event.id)
+    purchase = await make_purchase(
+        session, event.id, p.id, ocr_amount=Decimal("500"), receipt_hash="d8"
+    )
+    status = await decide_after_ocr(
+        session, purchase, event, recipient_found=False,
+        receipt_date=_TODAY, now=_NOW,
+    )
+    await session.commit()
+    assert status == PurchaseStatus.manual_review
+    assert purchase.needs_attention is False
 
 
 # 10. delete_event ------------------------------------------------------------------

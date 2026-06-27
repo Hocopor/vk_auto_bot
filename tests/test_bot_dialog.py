@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -266,6 +266,7 @@ async def test_process_receipt_auto_confirm_approved(session):
         ocr_amount=Decimal("500"),
         recipient_found=True,
         is_duplicate=False,
+        receipt_date=date.today(),
     )
     await session.commit()
 

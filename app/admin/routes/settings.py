@@ -22,6 +22,8 @@ async def _render(request, user, session, message=None, ok=None):
             "vk_token_set": await s.is_set(session, s.KEY_VK_TOKEN),
             "admin_title": await s.get_setting(session, s.KEY_ADMIN_TITLE) or "Админка",
             "winners_tab_enabled": (await s.get_setting(session, s.KEY_WINNERS_TAB_ENABLED)) != "false",
+            "receipt_max_age_days": (await s.get_setting(session, s.KEY_RECEIPT_MAX_AGE_DAYS)) or "3",
+            "autoconfirm_without_date": (await s.get_setting(session, s.KEY_AUTOCONFIRM_WITHOUT_DATE)) == "true",
             "message": message,
             "ok": ok,
         },
@@ -50,6 +52,8 @@ async def settings_save(
     vk_group_id: str = Form(""),
     admin_title: str = Form(""),
     winners_tab_enabled: str | None = Form(None),
+    receipt_max_age_days: str = Form("3"),
+    autoconfirm_without_date: str | None = Form(None),
 ):
     if vk_token.strip():
         await s.set_setting(session, s.KEY_VK_TOKEN, vk_token)
@@ -58,6 +62,19 @@ async def settings_save(
     winners = bool(winners_tab_enabled)
     await s.set_setting(session, s.KEY_ADMIN_TITLE, title)
     await s.set_setting(session, s.KEY_WINNERS_TAB_ENABLED, "true" if winners else "false")
+    raw_age = (receipt_max_age_days or "").strip()
+    try:
+        age_val = int(raw_age)
+        if age_val < 0:
+            age_val = 3
+    except ValueError:
+        age_val = 3
+    await s.set_setting(session, s.KEY_RECEIPT_MAX_AGE_DAYS, str(age_val))
+    await s.set_setting(
+        session,
+        s.KEY_AUTOCONFIRM_WITHOUT_DATE,
+        "true" if bool(autoconfirm_without_date) else "false",
+    )
     await session.commit()
     _update_cache(title, winners)
     return await _render(

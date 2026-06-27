@@ -143,6 +143,28 @@ async def test_settings_token_masked_in_html(client):
     assert "оставьте пустым" in resp.text
 
 
+async def test_settings_abuse_gate_save(client, maker):
+    resp = await client.post(
+        "/settings",
+        data={
+            "vk_group_id": "1",
+            "receipt_max_age_days": "7",
+            "autoconfirm_without_date": "true",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    async with maker() as sess:
+        assert await s.get_setting(sess, s.KEY_RECEIPT_MAX_AGE_DAYS) == "7"
+        assert await s.get_setting(sess, s.KEY_AUTOCONFIRM_WITHOUT_DATE) == "true"
+
+
+async def test_settings_page_has_abuse_fields(client):
+    resp = await client.get("/settings")
+    assert 'name="receipt_max_age_days"' in resp.text
+    assert 'name="autoconfirm_without_date"' in resp.text
+
+
 async def test_test_vk_endpoint(client, monkeypatch):
     async def fake_test_vk(token, group_id=None):
         return True, "VK OK MSG"
