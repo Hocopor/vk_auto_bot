@@ -2,6 +2,19 @@
 
 ## Текущая точка
 
+- **2026-06-27. БАГФИКС 8.9.1 (event_id="" → 422) — ИСПРАВЛЕН И ЗАДЕПЛОЕН (коммит `<DEPLOY2>`).**
+  Заказчик: при возврате дропдауна на «Все мероприятия» — чёрный экран с JSON
+  `int_parsing ... event_id ... unable to parse "" as integer` (422). Корень: HTML-`<select>`
+  всегда шлёт value выбранного пункта; «Все мероприятия»/«— выберите —» имеют value="" →
+  параметр `event_id: int | None` падает на пустой строке. Та же мина была в `/participants`
+  и `/winners` (тоже дропдаун с пустым value). **Фикс:** новый переиспользуемый тип
+  `app/admin/deps.py::OptionalInt = Annotated[int|None, BeforeValidator(_empty_to_none)]`
+  («"» → None), применён в `moderation_list`/`participants_list`/`winners_page`. **РЕЗУЛЬТАТ:**
+  pytest **264 passed, 2 skipped** (+4 регресс-теста: пустой event_id в board/list/participants/
+  winners → 200). e2e agent-browser: реальный флоу (выбрать мероприятие → вернуть «Все») на
+  всех трёх экранах → 200, не 422; проверены поиск на доске (q=Аня → только #1) и переключатель
+  Доской↔Списком с сохранением q. **ЗАДЕПЛОЕНО:** push → git pull /opt+/root → restart → smoke.
+  Миграций нет.
 - **2026-06-27. ЭТАП 8.9 (модерация-канбан: 3 колонки + фильтр + Доской/Списком + флаг) — ЗАВЕРШЁН И ЗАДЕПЛОЕН (коммит `936c753`).**
   Группа P4, edit.md #11/#19. Проектировал ОРКЕСТРАТОР, код писал coder-сабагент (sonnet,
   скилы TDD+fastapi-patterns+design-taste-frontend+frontend-design-direction).
@@ -623,6 +636,12 @@
   остановить.
 
 ## Нюансы (грабли, лимиты, особенности — пополняется по ходу)
+
+- **HTML-`<select>` + `int|None` query-параметр = 422 на пустом value.** Пункт-плейсхолдер
+  (value="") всегда отправляется формой → FastAPI не парсит "" как int. Для ЛЮБОГО
+  опционального int-параметра из дропдаунов использовать `app/admin/deps.py::OptionalInt`
+  (Annotated + BeforeValidator: "" → None). Сейчас так в moderation/participants/winners. При
+  добавлении новых фильтров-дропдаунов (8.10/8.11) — брать `OptionalInt`, не голый `int | None`.
 
 - **Локальная браузерная QA без PG:** `engine` в `db.py` берёт `settings.database_url`
   при импорте → локально гоняем на SQLite, задав env `DATABASE_URL=sqlite+aiosqlite:///./data/local_dev.db`.

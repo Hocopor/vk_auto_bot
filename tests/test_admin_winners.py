@@ -118,6 +118,17 @@ async def test_participants_no_event_selected(client, maker):
     assert resp.status_code == 200
 
 
+async def test_participants_empty_event_id_not_422(client, maker):
+    # Плейсхолдер «— выберите мероприятие —» отправляет event_id="" — не должно падать 422.
+    resp = await client.get("/participants", params={"event_id": ""})
+    assert resp.status_code == 200
+
+
+async def test_winners_empty_event_id_not_422(client, maker):
+    resp = await client.get("/winners", params={"event_id": ""})
+    assert resp.status_code == 200
+
+
 async def test_winners_page_renders(client, maker):
     event_id = await make_event(maker)
     resp = await client.get("/winners", params={"event_id": event_id})

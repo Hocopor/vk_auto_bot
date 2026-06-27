@@ -601,3 +601,19 @@ async def test_board_column_has_more_marker(client, maker):
     resp = await client.get("/moderation")
     assert resp.status_code == 200
     assert "Показаны первые" in resp.text
+
+
+async def test_empty_event_id_renders_board_not_422(client, maker):
+    # Дропдаун «Все мероприятия» отправляет event_id="" — раньше падало 422 int_parsing.
+    event_id = await make_event(maker)
+    participant_id = await make_participant(maker, event_id)
+    await make_purchase(maker, event_id, participant_id)
+
+    resp = await client.get("/moderation", params={"event_id": ""})
+    assert resp.status_code == 200
+    assert "На проверке" in resp.text
+
+
+async def test_empty_event_id_in_list_view_not_422(client, maker):
+    resp = await client.get("/moderation", params={"view": "list", "event_id": ""})
+    assert resp.status_code == 200

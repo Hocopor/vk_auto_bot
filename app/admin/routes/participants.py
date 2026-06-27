@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.admin.deps import get_session, require_login
+from app.admin.deps import OptionalInt, get_session, require_login
 from app.admin.templating import templates
 from app.core.models import Event, Participant, PosterNumber
 
@@ -12,7 +12,7 @@ router = APIRouter()
 @router.get("/participants")
 async def participants_list(
     request: Request,
-    event_id: int | None = None,
+    event_id: OptionalInt = None,
     user: str = Depends(require_login),
     session: AsyncSession = Depends(get_session),
 ):

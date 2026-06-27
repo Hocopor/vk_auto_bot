@@ -8,7 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.admin.deps import get_session, require_login
+from app.admin.deps import OptionalInt, get_session, require_login
 from app.admin.templating import templates
 from app.core.config import settings
 from app.core.models import Event, Participant, PosterNumber, Purchase, PurchaseStatus
@@ -94,7 +94,7 @@ async def moderation_list(
     request: Request,
     status: str | None = None,
     q: str | None = None,
-    event_id: int | None = None,
+    event_id: OptionalInt = None,
     view: str = "board",
     user: str = Depends(require_login),
     session: AsyncSession = Depends(get_session),
