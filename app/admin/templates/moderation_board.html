@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Модерация — {{ get_admin_title() }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>Модерация чеков</h1>
+    </div>
+</div>
+
+<div class="toolbar">
+    <form method="get" action="/moderation" class="grow" data-no-loading>
+        <input type="hidden" name="view" value="board">
+        <input type="text" class="grow" name="q" value="{{ q }}" placeholder="Поиск: имя, телефон, vk_id, номер, сумма">
+        <select name="event_id" onchange="this.form.submit()">
+            <option value="">Все мероприятия</option>
+            {% for e in events %}
+            <option value="{{ e.id }}" {% if event_id == e.id %}selected{% endif %}>{{ e.name }}{% if not e.is_active %} (остановлено){% endif %}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary btn-sm">Найти</button>
+    </form>
+    <a href="/moderation?view=list{% if event_id %}&event_id={{ event_id }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}" class="btn btn-secondary btn-sm">Списком</a>
+    <span class="filter-pill is-active">Доской</span>
+    <a href="/moderation/manual" class="btn btn-success btn-sm">+ Добавить вручную</a>
+</div>
+
+<div class="board">
+    {% for col in columns %}
+    <div class="board-col">
+        <div class="board-col-head">
+            <h2>{{ col.title }}</h2>
+            <span class="board-col-count">{{ col.rows|length }}</span>
+        </div>
+        {% if col.rows %}
+            {% for row in col.rows %}
+            {% set p = row.purchase %}
+            <a class="board-card" href="/moderation/{{ p.id }}">
+                <div class="board-card-top">
+                    <span class="muted">#{{ p.id }}</span>
+                    {% if col.key == "pending" and p.needs_attention %}
+                    <span class="board-flag" title="Требует внимания">!</span>
+                    {% endif %}
+                </div>
+                <div class="board-card-name">{{ p.participant.provided_name or p.participant.vk_name or "—" if p.participant else "—" }}</div>
+                <div class="board-card-meta">{{ p.event.name if p.event else "—" }}</div>
+                <div class="board-card-meta">
+                    {{ p.amount if p.amount is not none else (p.ocr_amount if p.ocr_amount is not none else "—") }}
+                    &middot;
+                    {{ p.posters_count if p.posters_count is not none else "—" }} билетов
+                    {% if row.partial %}<span class="badge badge-warning">частично</span>{% endif %}
+                </div>
+            </a>
+            {% endfor %}
+            {% if col.has_more %}
+            <p class="muted">Показаны первые {{ column_limit }} — уточните фильтр</p>
+            {% endif %}
+        {% else %}
+        <p class="muted">Пусто</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

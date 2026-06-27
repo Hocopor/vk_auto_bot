@@ -35,36 +35,29 @@ def _is_partial(purchase) -> bool:
     return amount < price or (amount % price != 0)
 
 
-@router.get("/moderation")
-async def moderation_list(
-    request: Request,
-    status: str | None = None,
-    q: str | None = None,
-    event_id: int | None = None,
-    user: str = Depends(require_login),
-    session: AsyncSession = Depends(get_session),
-):
-    stmt = (
-        select(Purchase)
-        .options(
-            selectinload(Purchase.participant),
-            selectinload(Purchase.event),
-            selectinload(Purchase.poster_numbers),
-        )
-        .order_by(Purchase.created_at.desc())
+COLUMN_LIMIT = 50
+BOARD_COLUMNS = [
+    ("pending", "На проверке", [PurchaseStatus.pending_ocr, PurchaseStatus.manual_review]),
+    ("confirmed", "Подтверждено", [PurchaseStatus.approved, PurchaseStatus.auto_confirmed]),
+    ("rejected", "Отклонено", [PurchaseStatus.rejected, PurchaseStatus.revoked]),
+]
+
+
+def _purchase_base_stmt():
+    return select(Purchase).options(
+        selectinload(Purchase.participant),
+        selectinload(Purchase.event),
+        selectinload(Purchase.poster_numbers),
     )
 
-    if status:
-        try:
-            status_enum = PurchaseStatus(status)
-        except ValueError:
-            status_enum = None
-        if status_enum is not None:
-            stmt = stmt.where(Purchase.status == status_enum)
 
+def _apply_event_filter(stmt, event_id):
     if event_id is not None:
         stmt = stmt.where(Purchase.event_id == event_id)
+    return stmt
 
+
+def _apply_search(stmt, q):
     if q and q.strip():
         conditions = [
             Participant.provided_name.ilike(f"%{q}%"),
@@ -93,24 +86,89 @@ async def moderation_list(
         stmt = stmt.join(Participant, Purchase.participant_id == Participant.id).where(
             or_(*conditions)
         )
+    return stmt
 
-    result = await session.execute(stmt)
-    purchases = result.scalars().unique().all()
-    rows = [{"purchase": p, "partial": _is_partial(p)} for p in purchases]
+
+@router.get("/moderation")
+async def moderation_list(
+    request: Request,
+    status: str | None = None,
+    q: str | None = None,
+    event_id: int | None = None,
+    view: str = "board",
+    user: str = Depends(require_login),
+    session: AsyncSession = Depends(get_session),
+):
+    events_result = await session.execute(select(Event).order_by(Event.created_at.desc()))
+    events = events_result.scalars().all()
 
     vk_group_id = await app_settings.get_setting(session, app_settings.KEY_VK_GROUP_ID)
 
+    if view == "list":
+        stmt = _apply_event_filter(_purchase_base_stmt(), event_id)
+
+        if status:
+            try:
+                status_enum = PurchaseStatus(status)
+            except ValueError:
+                status_enum = None
+            if status_enum is not None:
+                stmt = stmt.where(Purchase.status == status_enum)
+
+        stmt = _apply_search(stmt, q).order_by(Purchase.created_at.desc())
+
+        result = await session.execute(stmt)
+        purchases = result.scalars().unique().all()
+        rows = [{"purchase": p, "partial": _is_partial(p)} for p in purchases]
+
+        return templates.TemplateResponse(
+            "moderation_list.html",
+            {
+                "request": request,
+                "user": user,
+                "rows": rows,
+                "status": status,
+                "q": q or "",
+                "event_id": event_id,
+                "statuses": list(PurchaseStatus),
+                "vk_group_id": vk_group_id,
+                "events": events,
+                "view": "list",
+            },
+        )
+
+    columns = []
+    for key, title, statuses in BOARD_COLUMNS:
+        stmt = _apply_search(_apply_event_filter(_purchase_base_stmt(), event_id), q)
+        stmt = stmt.where(Purchase.status.in_(statuses)).order_by(Purchase.created_at.desc())
+        stmt = stmt.limit(COLUMN_LIMIT + 1)
+
+        result = await session.execute(stmt)
+        items = result.scalars().unique().all()
+        has_more = len(items) > COLUMN_LIMIT
+        items = items[:COLUMN_LIMIT]
+
+        columns.append(
+            {
+                "key": key,
+                "title": title,
+                "rows": [{"purchase": p, "partial": _is_partial(p)} for p in items],
+                "has_more": has_more,
+            }
+        )
+
     return templates.TemplateResponse(
-        "moderation_list.html",
+        "moderation_board.html",
         {
             "request": request,
             "user": user,
-            "rows": rows,
-            "status": status,
-            "q": q or "",
+            "columns": columns,
+            "events": events,
             "event_id": event_id,
-            "statuses": list(PurchaseStatus),
+            "q": q or "",
             "vk_group_id": vk_group_id,
+            "view": "board",
+            "column_limit": COLUMN_LIMIT,
         },
     )
 

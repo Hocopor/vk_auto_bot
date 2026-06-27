@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.admin.deps import get_session, require_login
 from app.admin.main import app
+from app.admin.routes.moderation import COLUMN_LIMIT
 from app.core import models  # noqa: F401
 from app.core.db import Base
 from app.core.models import Participant, PosterNumber, Purchase, PurchaseStatus
@@ -88,7 +89,7 @@ async def test_queue_lists_manual_review(client, maker):
     participant_id = await make_participant(maker, event_id, provided_name="Иван Петров")
     await make_purchase(maker, event_id, participant_id, status=PurchaseStatus.manual_review)
 
-    resp = await client.get("/moderation", params={"status": "manual_review"})
+    resp = await client.get("/moderation", params={"status": "manual_review", "view": "list"})
     assert resp.status_code == 200
     assert "Иван Петров" in resp.text
 
@@ -317,7 +318,7 @@ async def test_search_by_phone(client, maker):
     participant_id = await make_participant(maker, event_id, phone="+79991234567")
     purchase_id = await make_purchase(maker, event_id, participant_id)
 
-    resp = await client.get("/moderation", params={"q": "+79991234567"})
+    resp = await client.get("/moderation", params={"q": "+79991234567", "view": "list"})
     assert resp.status_code == 200
     assert f"/moderation/{purchase_id}" in resp.text
 
@@ -340,7 +341,7 @@ async def test_vk_chat_link_uses_gim_format_when_group_id_set(client, maker):
         await app_settings.set_setting(session, app_settings.KEY_VK_GROUP_ID, "123456")
         await session.commit()
 
-    resp_list = await client.get("/moderation")
+    resp_list = await client.get("/moderation", params={"view": "list"})
     assert resp_list.status_code == 200
     assert "gim123456?sel=777" in resp_list.text
     assert "write-" not in resp_list.text
@@ -356,7 +357,7 @@ async def test_vk_chat_link_absent_when_group_id_not_set(client, maker):
     participant_id = await make_participant(maker, event_id, vk_user_id=777)
     purchase_id = await make_purchase(maker, event_id, participant_id)
 
-    resp_list = await client.get("/moderation")
+    resp_list = await client.get("/moderation", params={"view": "list"})
     assert resp_list.status_code == 200
     assert "gim" not in resp_list.text
     assert "write-" not in resp_list.text
@@ -503,3 +504,100 @@ async def test_manual_then_approve(client, maker):
     async with maker() as session:
         purchase = await session.get(Purchase, purchase_id)
         assert purchase.status == PurchaseStatus.approved
+
+
+async def test_board_is_default_view(client, maker):
+    resp = await client.get("/moderation")
+    assert resp.status_code == 200
+    assert "На проверке" in resp.text
+    assert "Подтверждено" in resp.text
+    assert "Отклонено" in resp.text
+
+
+async def test_board_groups_statuses_into_columns(client, maker):
+    event_id = await make_event(maker)
+    participant_id = await make_participant(maker, event_id)
+    pending_id = await make_purchase(
+        maker, event_id, participant_id, status=PurchaseStatus.manual_review
+    )
+    approved_id = await make_purchase(
+        maker, event_id, participant_id, status=PurchaseStatus.approved
+    )
+    rejected_id = await make_purchase(
+        maker, event_id, participant_id, status=PurchaseStatus.rejected
+    )
+
+    resp = await client.get("/moderation")
+    assert resp.status_code == 200
+    assert f"/moderation/{pending_id}" in resp.text
+    assert f"/moderation/{approved_id}" in resp.text
+    assert f"/moderation/{rejected_id}" in resp.text
+
+
+async def test_board_shows_needs_attention_flag(client, maker):
+    event_id = await make_event(maker)
+    participant_id = await make_participant(maker, event_id)
+    await make_purchase(
+        maker,
+        event_id,
+        participant_id,
+        status=PurchaseStatus.manual_review,
+        needs_attention=True,
+    )
+
+    resp = await client.get("/moderation")
+    assert resp.status_code == 200
+    assert "board-flag" in resp.text
+
+
+async def test_board_filters_by_event(client, maker):
+    event1_id = await make_event(maker, name="Событие 1", keyword="событие1")
+    event2_id = await make_event(maker, name="Событие 2", keyword="событие2")
+    participant1_id = await make_participant(maker, event1_id, vk_user_id=201)
+    participant2_id = await make_participant(maker, event2_id, vk_user_id=202)
+    purchase1_id = await make_purchase(maker, event1_id, participant1_id)
+    purchase2_id = await make_purchase(maker, event2_id, participant2_id)
+
+    resp = await client.get("/moderation", params={"event_id": event1_id})
+    assert resp.status_code == 200
+    assert f"/moderation/{purchase1_id}" in resp.text
+    assert f"/moderation/{purchase2_id}" not in resp.text
+
+
+async def test_view_list_renders_table(client, maker):
+    event_id = await make_event(maker)
+    participant_id = await make_participant(maker, event_id)
+    await make_purchase(maker, event_id, participant_id)
+
+    resp = await client.get("/moderation", params={"view": "list"})
+    assert resp.status_code == 200
+    assert "<table" in resp.text
+
+
+async def test_board_has_switch_to_list_link(client, maker):
+    resp = await client.get("/moderation")
+    assert resp.status_code == 200
+    assert "view=list" in resp.text
+
+
+async def test_list_switch_to_board_link_preserves_event_id(client, maker):
+    event_id = await make_event(maker)
+
+    resp = await client.get(
+        "/moderation", params={"view": "list", "event_id": event_id}
+    )
+    assert resp.status_code == 200
+    assert f"event_id={event_id}" in resp.text
+
+
+async def test_board_column_has_more_marker(client, maker):
+    event_id = await make_event(maker)
+    participant_id = await make_participant(maker, event_id)
+    for _ in range(COLUMN_LIMIT + 1):
+        await make_purchase(
+            maker, event_id, participant_id, status=PurchaseStatus.manual_review
+        )
+
+    resp = await client.get("/moderation")
+    assert resp.status_code == 200
+    assert "Показаны первые" in resp.text

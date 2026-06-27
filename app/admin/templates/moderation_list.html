@@ -24,18 +24,27 @@
 
 <div class="toolbar">
     <form method="get" action="/moderation" class="grow" data-no-loading>
+        <input type="hidden" name="view" value="list">
         <input type="text" class="grow" name="q" value="{{ q }}" placeholder="Поиск: имя, телефон, vk_id, номер, сумма">
+        <select name="event_id" onchange="this.form.submit()">
+            <option value="">Все мероприятия</option>
+            {% for e in events %}
+            <option value="{{ e.id }}" {% if event_id == e.id %}selected{% endif %}>{{ e.name }}{% if not e.is_active %} (остановлено){% endif %}</option>
+            {% endfor %}
+        </select>
         <button type="submit" class="btn btn-secondary btn-sm">Найти</button>
     </form>
+    <a href="/moderation?view=board{% if event_id %}&event_id={{ event_id }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}" class="btn btn-secondary btn-sm">Доской</a>
+    <span class="filter-pill is-active">Списком</span>
     <a href="/moderation/manual" class="btn btn-success btn-sm">+ Добавить вручную</a>
 </div>
 
 <div class="filter-pills">
-    <a class="filter-pill {% if not status %}is-active{% endif %}" href="/moderation">Все</a>
-    <a class="filter-pill {% if status == 'manual_review' %}is-active{% endif %}" href="/moderation?status=manual_review">На проверке</a>
-    <a class="filter-pill {% if status == 'approved' %}is-active{% endif %}" href="/moderation?status=approved">Одобрено</a>
-    <a class="filter-pill {% if status == 'rejected' %}is-active{% endif %}" href="/moderation?status=rejected">Отклонено</a>
-    <a class="filter-pill {% if status == 'revoked' %}is-active{% endif %}" href="/moderation?status=revoked">Отозвано</a>
+    <a class="filter-pill {% if not status %}is-active{% endif %}" href="/moderation?view=list{% if event_id %}&event_id={{ event_id }}{% endif %}">Все</a>
+    <a class="filter-pill {% if status == 'manual_review' %}is-active{% endif %}" href="/moderation?status=manual_review&view=list{% if event_id %}&event_id={{ event_id }}{% endif %}">На проверке</a>
+    <a class="filter-pill {% if status == 'approved' %}is-active{% endif %}" href="/moderation?status=approved&view=list{% if event_id %}&event_id={{ event_id }}{% endif %}">Одобрено</a>
+    <a class="filter-pill {% if status == 'rejected' %}is-active{% endif %}" href="/moderation?status=rejected&view=list{% if event_id %}&event_id={{ event_id }}{% endif %}">Отклонено</a>
+    <a class="filter-pill {% if status == 'revoked' %}is-active{% endif %}" href="/moderation?status=revoked&view=list{% if event_id %}&event_id={{ event_id }}{% endif %}">Отозвано</a>
 </div>
 
 {% if rows %}

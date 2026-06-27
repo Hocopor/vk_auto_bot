@@ -813,3 +813,21 @@ td.col-actions .btn-row { justify-content: flex-end; gap: var(--sp-2); flex-wrap
 @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; animation: none !important; }
 }
+
+/* ==========================================================================
+   Канбан модерации
+   ========================================================================== */
+
+.board { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); align-items: start; }
+.board-col { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-3); }
+.board-col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
+.board-col-head h2 { margin: 0; font-size: 0.95rem; }
+.board-col-count { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-pill); padding: 0 var(--sp-2); font-size: 0.8rem; color: var(--text-muted); }
+.board-card { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--sp-3); margin-bottom: var(--sp-2); box-shadow: var(--shadow-sm); color: var(--text); }
+.board-card:hover { border-color: var(--border-strong); text-decoration: none; }
+.board-card:last-child { margin-bottom: 0; }
+.board-card-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.board-card-name { font-weight: 600; margin: var(--sp-1) 0; }
+.board-card-meta { color: var(--text-muted); font-size: 0.85rem; }
+.board-flag { color: var(--danger); font-weight: 700; font-size: 1rem; line-height: 1; }
+@media (max-width: 820px) { .board { grid-template-columns: 1fr; } }
