@@ -41,6 +41,9 @@
                     {% if col.key == "pending" and p.needs_attention %}
                     <span class="board-flag" title="Требует внимания">!</span>
                     {% endif %}
+                    {% if p.numbers_shortfall %}
+                    <span class="board-flag" title="Не хватило {{ p.numbers_shortfall }} номеров — нужен возврат части денег">!</span>
+                    {% endif %}
                 </div>
                 <div class="board-card-name">{{ p.participant.provided_name or p.participant.vk_name or "—" if p.participant else "—" }}</div>
                 <div class="board-card-meta">{{ p.event.name if p.event else "—" }}</div>
@@ -49,6 +52,7 @@
                     &middot;
                     {{ p.posters_count if p.posters_count is not none else "—" }} билетов
                     {% if row.partial %}<span class="badge badge-warning">частично</span>{% endif %}
+                    {% if p.numbers_shortfall %}<span class="badge badge-danger">не хватило {{ p.numbers_shortfall }}</span>{% endif %}
                 </div>
             </a>
             {% endfor %}

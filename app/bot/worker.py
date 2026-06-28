@@ -11,7 +11,12 @@ from app.core.db import async_session_maker
 from app.core.models import Purchase, PurchaseStatus
 from app.core.placeholders import format_numbers, render
 from app.core.services import public_table
-from app.core.services.numbers import NumbersExhausted, assign_unique, count_posters
+from app.core.services.numbers import (
+    assign_available,
+    assigned_count_for_purchase,
+    count_posters,
+    purchase_numbers,
+)
 from app.core.services.participants import resolve_public_name
 
 logger = logging.getLogger(__name__)
@@ -68,32 +73,46 @@ async def process_pending(
             )
             continue
 
-        try:
-            numbers = await assign_unique(
-                session, event.id, participant.id, purchase.id, count
-            )
-        except NumbersExhausted as e:
-            logger.error(
-                "Numbers exhausted for event %s: requested %s, available %s — ADMIN ALERT",
-                e.event_id,
-                e.requested,
-                e.available,
-            )
-            continue
+        # Частичное присвоение (Фаза 9): сколько ещё нужно сверх уже присвоенного
+        # (already > 0 при переобработке после восстановления ёмкости — не дублируем).
+        already = await assigned_count_for_purchase(session, purchase.id)
+        needed = count - already
+        if needed > 0:
+            await assign_available(session, event.id, participant.id, purchase.id, needed)
 
+        numbers = await purchase_numbers(session, purchase.id)
+        total = len(numbers)
+        shortfall = count - total
+
+        # ЛАТЧ: помечаем обработанной даже при недостаче, чтобы не ретраить каждые 5с.
+        # Восстановление ёмкости (reject/расширение диапазона) сбросит флаг и переобработает.
         purchase.numbers_assigned = True
+        if shortfall > 0:
+            purchase.numbers_shortfall = shortfall
+            purchase.needs_attention = True
+            logger.warning(
+                "Partial assignment event %s purchase %s: assigned %s of %s "
+                "(shortfall %s) — НЕ ХВАТИЛО НОМЕРОВ, нужен возврат части денег",
+                event.id,
+                purchase.id,
+                total,
+                count,
+                shortfall,
+            )
+        else:
+            purchase.numbers_shortfall = None
         await session.flush()
 
         ctx = {
             "name": resolve_public_name(participant) or "",
             "numbers": format_numbers(numbers),
-            "count": len(numbers),
+            "count": total,
             "price": event.price,
             "sheet_url": _resolve_sheet_url(event),
             "event_name": event.name,
         }
 
-        if event.send_after_payment:
+        if total > 0 and event.send_after_payment:
             text = render(event.msg_after_payment, ctx)
             attachment = None
             if upload_api is not None:

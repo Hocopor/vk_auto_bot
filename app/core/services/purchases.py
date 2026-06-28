@@ -5,7 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import Event, Purchase, PurchaseStatus
 from app.core.services import abuse
-from app.core.services.numbers import assigned_count_for_purchase, count_posters, free_numbers
+from app.core.services.numbers import (
+    assigned_count_for_purchase,
+    count_posters,
+    free_numbers,
+    recover_event_capacity,
+)
 
 
 def evaluate_payment(amount, price, recipient_found: bool) -> bool:
@@ -112,6 +117,10 @@ async def reject(session: AsyncSession, purchase: Purchase, moderated_by: str | 
     n = await free_numbers(session, purchase.id)
     purchase.status = PurchaseStatus.rejected
     purchase.numbers_assigned = False
+    purchase.numbers_shortfall = None
     purchase.moderated_by = moderated_by
     await session.flush()
+    # Освободилась ёмкость — дать воркеру дозаполнить покупки с недостачей в этом
+    # мероприятии (Фаза 9, восстановление ёмкости).
+    await recover_event_capacity(session, purchase.event_id)
     return n

@@ -41,9 +41,17 @@
                     {% if event.qr_last_error %}
                     <span class="badge badge-danger" title="{{ event.qr_last_error }}"><span class="dot"></span>QR не ушёл</span>
                     {% endif %}
+                    {% set c = caps.get(event.id) %}
+                    {% if c and c.free_projected <= 0 %}
+                    <span class="badge badge-danger" title="Свободно {{ c.free }}, бронь {{ c.reserved }}"><span class="dot"></span>ИСЧЕРПАНО — бот не принимает</span>
+                    {% endif %}
                 </td>
                 <td class="num nowrap">{{ event.price|int }} ₽</td>
-                <td class="num nowrap">{{ event.number_min }}–{{ event.number_max }}</td>
+                <td class="num nowrap">
+                    {{ event.number_min }}–{{ event.number_max }}
+                    {% set c = caps.get(event.id) %}
+                    {% if c %}<br><span class="muted">выдано {{ c.assigned }}/{{ c.capacity }} (своб. {{ c.free }})</span>{% endif %}
+                </td>
                 <td class="muted nowrap">
                     {%- if event.starts_at %}{{ event.starts_at.strftime('%d.%m') }}{% endif %}
                     {%- if event.starts_at and event.ends_at %} — {% endif %}

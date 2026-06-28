@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,13 +15,14 @@ from app.admin.templating import templates
 from app.core import timeutil
 from app.core.config import settings
 from app.core.defaults import DEFAULT_TEXTS
-from app.core.models import Event, EventMessageImage, Purchase
+from app.core.models import Event, EventMessageImage, PosterNumber, Purchase
 from app.core.services.events import (
     create_event,
     delete_event,
     find_active_event_by_keyword,
     set_active,
 )
+from app.core.services.numbers import event_capacity, recover_event_capacity
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +134,10 @@ async def list_events(
 ):
     result = await session.execute(select(Event).order_by(Event.created_at.desc()))
     events = result.scalars().all()
+    caps = {e.id: await event_capacity(session, e.id) for e in events}
     return templates.TemplateResponse(
-        "events_list.html", {"request": request, "user": user, "events": events}
+        "events_list.html",
+        {"request": request, "user": user, "events": events, "caps": caps},
     )
 
 
@@ -379,6 +382,7 @@ async def edit_event_form(
             "defaults": DEFAULT_TEXTS,
             "error": None,
             "msg_images": await _event_msg_image_keys(session, event.id),
+            "cap": await event_capacity(session, event.id),
         },
     )
 
@@ -432,6 +436,8 @@ async def update_event_submit(
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
 
     old_sheet_url = event.google_sheet_url
+    old_number_min = event.number_min
+    old_number_max = event.number_max
 
     form_values = {
         "id": event.id,
@@ -482,6 +488,36 @@ async def update_event_submit(
             status_code=400,
         )
 
+    # Нельзя сузить диапазон ниже уже присвоенных номеров (Фаза 9).
+    bounds = (
+        await session.execute(
+            select(func.min(PosterNumber.number), func.max(PosterNumber.number)).where(
+                PosterNumber.event_id == event.id
+            )
+        )
+    ).one()
+    assigned_min, assigned_max = bounds
+    if assigned_min is not None and (
+        number_min_val > assigned_min or number_max_val < assigned_max
+    ):
+        return templates.TemplateResponse(
+            "event_form.html",
+            {
+                "request": request,
+                "user": user,
+                "mode": "edit",
+                "event": form_values,
+                "defaults": DEFAULT_TEXTS,
+                "error": (
+                    f"Нельзя сузить диапазон: уже присвоены номера "
+                    f"{assigned_min}–{assigned_max}. Диапазон должен их включать."
+                ),
+                "msg_images": await _event_msg_image_keys(session, event.id),
+                "cap": await event_capacity(session, event.id),
+            },
+            status_code=400,
+        )
+
     if event.is_active:
         conflict = await find_active_event_by_keyword(session, keyword, exclude_id=event.id)
         if conflict is not None:
@@ -495,6 +531,7 @@ async def update_event_submit(
                     "defaults": DEFAULT_TEXTS,
                     "error": _keyword_conflict_message(conflict),
                     "msg_images": await _event_msg_image_keys(session, event.id),
+                    "cap": await event_capacity(session, event.id),
                 },
                 status_code=400,
             )
@@ -522,6 +559,13 @@ async def update_event_submit(
     event.send_contacts_saved = bool(send_contacts_saved)
     event.google_sheet_url = _parse_optional_str(google_sheet_url)
     new_sheet_url = event.google_sheet_url
+
+    # Диапазон расширили → освободилась ёмкость: дать воркеру дозаполнить покупки
+    # с недостачей, бот снова начнёт принимать (Фаза 9, восстановление ёмкости).
+    new_capacity = number_max_val - number_min_val + 1
+    old_capacity = old_number_max - old_number_min + 1
+    if new_capacity > old_capacity:
+        await recover_event_capacity(session, event.id)
 
     new_qr_path = await _save_qr_file(qr_file)
     if new_qr_path:

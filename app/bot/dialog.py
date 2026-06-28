@@ -59,15 +59,34 @@ def is_event_open(event: Event, now: datetime) -> bool:
     return True
 
 
+async def is_event_accepting(
+    session: AsyncSession, event: Event, now: datetime | None = None
+) -> bool:
+    """Принимает ли событие новых участников: открыто по срокам И есть свободная
+    прогнозная ёмкость (Фаза 9). Если номера исчерпаны (с учётом брони открытых
+    покупок) — бот не должен реагировать на кодовое слово."""
+    now = now or datetime.now(timezone.utc)
+    if not is_event_open(event, now):
+        return False
+    from app.core.services.numbers import event_capacity
+
+    cap = await event_capacity(session, event.id)
+    return cap["free_projected"] > 0
+
+
 async def find_matching_event(
     session: AsyncSession, text: str, now: datetime | None = None
 ) -> Event | None:
-    """Ищет первое активное и открытое событие, чьё кодовое слово встречается в text."""
+    """Ищет первое активное и открытое событие, чьё кодовое слово встречается в text.
+
+    Событие с исчерпанной ёмкостью пропускается — бот молчит (Фаза 9, требование C)."""
     now = now or datetime.now(timezone.utc)
     result = await session.execute(select(Event).where(Event.is_active.is_(True)))
     events = result.scalars().all()
     for event in events:
-        if is_keyword_match(text, event.keyword) and is_event_open(event, now):
+        if not is_keyword_match(text, event.keyword):
+            continue
+        if await is_event_accepting(session, event, now):
             return event
     return None
 

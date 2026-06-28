@@ -545,3 +545,61 @@ async def test_create_event_with_contacts_saved_fields(client, maker):
         event = result.scalars().one()
         assert event.msg_contacts_saved == "Спасибо за данные!"
         assert event.send_contacts_saved is True
+
+
+async def test_update_event_cannot_shrink_range_below_assigned_numbers(client, maker):
+    """Фаза 9: нельзя сузить диапазон ниже уже присвоенных номеров — форма 400,
+    диапазон не меняется."""
+    async with maker() as session:
+        event = await create_event(
+            session, name="Диапазон", keyword="диап", price=Decimal("250"),
+            number_min=1, number_max=100, winners_count=1,
+        )
+        participant = Participant(event_id=event.id, vk_user_id=1, provided_name="Иван")
+        session.add(participant)
+        await session.flush()
+        purchase = Purchase(
+            event_id=event.id, participant_id=participant.id, amount=Decimal("500"),
+            posters_count=1, status=PurchaseStatus.approved, numbers_assigned=True,
+        )
+        session.add(purchase)
+        await session.flush()
+        session.add(PosterNumber(
+            event_id=event.id, participant_id=participant.id, purchase_id=purchase.id, number=50,
+        ))
+        await session.commit()
+        event_id = event.id
+
+    resp = await client.post(
+        f"/events/{event_id}",
+        data=event_form_data(name="Диапазон", keyword="диап", number_min="1", number_max="10"),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    assert "сузить диапазон" in resp.text.lower()
+
+    async with maker() as session:
+        refreshed = await session.get(Event, event_id)
+        assert refreshed.number_max == 100  # диапазон не изменился
+
+
+async def test_events_list_shows_exhausted_badge(client, maker):
+    """Фаза 9: в списке мероприятий при исчерпании ёмкости виден бейдж."""
+    async with maker() as session:
+        event = await create_event(
+            session, name="Полное", keyword="полн", price=Decimal("250"),
+            number_min=1, number_max=1, winners_count=1,
+        )
+        participant = Participant(event_id=event.id, vk_user_id=1, provided_name="Иван")
+        session.add(participant)
+        await session.flush()
+        purchase = Purchase(
+            event_id=event.id, participant_id=participant.id, amount=Decimal("250"),
+            posters_count=1, status=PurchaseStatus.approved, numbers_assigned=False,
+        )
+        session.add(purchase)
+        await session.commit()
+
+    resp = await client.get("/events")
+    assert resp.status_code == 200
+    assert "ИСЧЕРПАНО" in resp.text

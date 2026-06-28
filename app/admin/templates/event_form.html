@@ -86,6 +86,9 @@
                     <input type="number" id="f-max" name="number_max" value="{{ event.number_max if event else '' }}" required>
                 </div>
             </div>
+            {% if cap %}
+            <p class="field-hint">Ёмкость: выдано {{ cap.assigned }}/{{ cap.capacity }} (свободно {{ cap.free }}, бронь {{ cap.reserved }}){% if cap.free_projected <= 0 %} — <strong>исчерпано, бот не принимает новых</strong>. Расширьте «Номер до», чтобы открыть{% endif %}. Сузить диапазон ниже уже присвоенных номеров нельзя.</p>
+            {% endif %}
         </div>
 
         <!-- ───────── Сроки ───────── -->

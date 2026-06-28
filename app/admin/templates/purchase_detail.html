@@ -32,6 +32,9 @@
 {% if error == 'amount' %}
 <div class="banner banner-warning">⚠ Укажите сумму перед одобрением.</div>
 {% endif %}
+{% if p.numbers_shortfall %}
+<div class="banner banner-danger">⚠ НЕ ХВАТИЛО НОМЕРОВ: нужно {{ p.posters_count }}, выдано {{ p.poster_numbers|length }}, не хватает {{ p.numbers_shortfall }}. Верните участнику часть денег (за невыданные номера) или освободите/расширьте диапазон.</div>
+{% endif %}
 
 <div class="panel">
     <h2>Участник</h2>
@@ -59,6 +62,9 @@
         <div class="dl-row"><dt>Номера</dt>
             <dd class="num">{% if p.poster_numbers %}{{ p.poster_numbers|map(attribute='number')|join(', ') }}{% else %}—{% endif %}</dd>
         </div>
+        {% if p.numbers_shortfall %}
+        <div class="dl-row"><dt>Не хватило</dt><dd class="num"><span class="badge badge-danger">{{ p.numbers_shortfall }}</span></dd></div>
+        {% endif %}
     </dl>
 </div>
 

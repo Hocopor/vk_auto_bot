@@ -145,7 +145,10 @@ async def test_non_approved_ignored(session):
     assert sent == []
 
 
-async def test_numbers_exhausted_does_not_crash(session):
+async def test_partial_assignment_on_shortfall(session):
+    """Фаза 9: при нехватке номеров воркер присваивает сколько есть (частично),
+    ставит numbers_shortfall + needs_attention и ЛАТЧ (не ретраит вечно), но
+    участнику всё равно отправляет имеющиеся номера."""
     event, participant, purchase = await setup_purchase(
         session, number_min=1, number_max=2, posters_count=5
     )
@@ -153,16 +156,56 @@ async def test_numbers_exhausted_does_not_crash(session):
 
     processed = await process_pending(session, send_message=send)
 
-    assert processed == 0
+    assert processed == 1
     await session.refresh(purchase)
-    assert purchase.numbers_assigned is False
+    assert purchase.numbers_assigned is True  # ЛАТЧ — больше не ретраим
+    assert purchase.numbers_shortfall == 3  # нужно 5, доступно 2
+    assert purchase.needs_attention is True
     nums = (
         await session.execute(
             select(PosterNumber).where(PosterNumber.event_id == event.id)
         )
     ).scalars().all()
-    assert nums == []
-    assert sent == []
+    assert len(nums) == 2  # выдано всё, что было
+    assert len(sent) == 1  # после-оплатное сообщение с двумя номерами ушло
+
+    # Повторный прогон НЕ должен ничего менять (латч держит).
+    processed2 = await process_pending(session, send_message=send)
+    assert processed2 == 0
+
+
+async def test_recovery_tops_up_shortfall_after_range_expand(session):
+    """Фаза 9: после расширения диапазона recover_event_capacity сбрасывает латч
+    у shortfall-покупки, и следующий прогон воркера дозаполняет недостающие номера
+    (без двойного присвоения)."""
+    from app.core.services.numbers import recover_event_capacity
+
+    event, participant, purchase = await setup_purchase(
+        session, number_min=1, number_max=2, posters_count=5
+    )
+    send, sent = make_callbacks()
+    await process_pending(session, send_message=send)
+    await session.refresh(purchase)
+    assert purchase.numbers_shortfall == 3
+
+    # Расширяем диапазон до 1..5 (хватит на все 5) и восстанавливаем ёмкость.
+    event.number_max = 5
+    await session.flush()
+    recovered = await recover_event_capacity(session, event.id)
+    await session.commit()
+    assert recovered == 1
+
+    processed = await process_pending(session, send_message=send)
+    assert processed == 1
+    await session.refresh(purchase)
+    assert purchase.numbers_shortfall is None  # недостача закрыта
+    nums = (
+        await session.execute(
+            select(PosterNumber.number).where(PosterNumber.purchase_id == purchase.id)
+        )
+    ).scalars().all()
+    assert len(nums) == 5  # доприсвоено до полного, без дублей
+    assert len(set(nums)) == 5
 
 
 async def test_send_failure_does_not_block(session):
