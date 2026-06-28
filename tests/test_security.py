@@ -26,8 +26,9 @@ async def test_security_headers_present(client):
     resp = await client.get("/login")
     h = resp.headers
     assert h["X-Content-Type-Options"] == "nosniff"
-    assert h["X-Frame-Options"] == "DENY"
-    assert "frame-ancestors 'none'" in h["Content-Security-Policy"]
+    # SAMEORIGIN (не DENY): нужно для превью PDF-чека в <iframe>
+    assert h["X-Frame-Options"] == "SAMEORIGIN"
+    assert "frame-ancestors 'self'" in h["Content-Security-Policy"]
     assert "default-src 'self'" in h["Content-Security-Policy"]
     assert h["Referrer-Policy"] == "same-origin"
     assert h.get("Server") == "web"

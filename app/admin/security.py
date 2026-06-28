@@ -31,7 +31,9 @@ _CSP = (
     "font-src 'self' https://fonts.gstatic.com; "
     "img-src 'self' data:; "
     "frame-src 'self'; "
-    "frame-ancestors 'none'; "
+    # 'self' (не 'none'): админка встраивает СВОЙ же эндпоинт чека в <iframe>
+    # (превью PDF). Чужие сайты фреймить нас всё равно не могут.
+    "frame-ancestors 'self'; "
     "base-uri 'self'; "
     "form-action 'self'"
 )
@@ -44,7 +46,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         headers = response.headers
         headers["X-Content-Type-Options"] = "nosniff"
-        headers["X-Frame-Options"] = "DENY"
+        # SAMEORIGIN, не DENY: нужен для превью PDF-чека в <iframe> (тот же origin).
+        # От clickjacking с чужих доменов всё равно защищает.
+        headers["X-Frame-Options"] = "SAMEORIGIN"
         headers["Referrer-Policy"] = "same-origin"
         headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         headers["Content-Security-Policy"] = _CSP
