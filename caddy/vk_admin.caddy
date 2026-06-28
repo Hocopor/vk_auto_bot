@@ -11,10 +11,10 @@
 {
 	# Браузер/curl не шлют SNI для голого IP → задаём имя по умолчанию,
 	# иначе tls internal не может выбрать сертификат (handshake internal error).
-	default_sni 37.230.192.61
+	default_sni 84.54.57.141
 }
 
-https://37.230.192.61 {
+https://84.54.57.141 {
 	tls internal
 
 	# Чек-файлы / QR могут быть крупными
