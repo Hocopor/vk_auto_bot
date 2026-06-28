@@ -28,7 +28,7 @@ app.add_middleware(
     secret_key=settings.session_secret,
     max_age=7 * 24 * 3600,  # сессия живёт 7 дней
     same_site="lax",  # cookie не уходит при cross-site POST → базовая защита от CSRF
-    https_only=False,  # сейчас HTTP (без домена); при появлении TLS — поставить True
+    https_only=True,  # админка только по HTTPS (Caddy :443, tls internal) → cookie с флагом Secure
 )
 app.mount("/static", StaticFiles(directory="app/admin/static"), name="static")
 
