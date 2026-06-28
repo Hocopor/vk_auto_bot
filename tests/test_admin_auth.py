@@ -18,7 +18,8 @@ def creds(monkeypatch):
 @pytest.fixture
 async def client():
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    # https — cookie сессии теперь Secure (https_only=True), по http не вернётся
+    async with httpx.AsyncClient(transport=transport, base_url="https://test") as c:
         yield c
 
 
