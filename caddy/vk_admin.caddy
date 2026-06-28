@@ -8,6 +8,12 @@
 # На фрешем сервере этот файл кладётся как /etc/caddy/Caddyfile целиком.
 # Открыть в security group cloud.ru нужно только порт 443.
 
+{
+	# Браузер/curl не шлют SNI для голого IP → задаём имя по умолчанию,
+	# иначе tls internal не может выбрать сертификат (handshake internal error).
+	default_sni 37.230.192.61
+}
+
 https://37.230.192.61 {
 	tls internal
 
