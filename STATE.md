@@ -2,6 +2,46 @@
 
 ## Текущая точка
 
+- **2026-06-28. РАЗВЁРНУТ НОВЫЙ БОЕВОЙ СЕРВЕР cloud.ru С НУЛЯ (заменяет старый 185.228.72.118).**
+  Заказчик создал чистую VM на cloud.ru и попросил задеплоить туда. Полностью провизионинг
+  с нуля (не инкрементальный git-pull). **Коммиты этой сессии:** `c885791` (https_only=True),
+  `0719fc1` (Caddy default_sni), `5b7891d` (uvicorn --proxy-headers/--no-server-header),
+  `d5e6fe0` (фикс auth-теста под Secure-cookie).
+  - **Сервер:** `auto@37.230.192.61`, Ubuntu 22.04.5, sudo БЕСПАРОЛЬНЫЙ. SSH-ключ:
+    `A:\DevAI\Zakazi\ыыр\auto_bot\id_rsa` (НЕ в `ssh.md` — там старый сервер). Доступ к серверу
+    из этой среды ФЛАПАЕТ (порт 22 то отвечает, то таймаут; github/apt с сервера тоже временами
+    отваливаются) — все ssh/git-команды оборачивать в РЕТРАИ (см. «Нюансы»).
+  - **Что сделано (по порядку):** apt-зеркало переключено на `https://archive.ubuntu.com` +
+    `ForceIPv4` (штатный `mirror.yandex.ru:80` и IPv6 недоступны); поставлены postgresql-14,
+    tesseract-ocr+rus, build-essential, caddy (офиц. репо). **Python 3.12.13** — deadsnakes PPA
+    (add-apt-repository падает: api.launchpad.net закрыт → ключ+source добавлены ВРУЧНУЮ, см.
+    «Нюансы»). Системный юзер `vkbot`, репо в `/opt/vk_auto_bot` (git clone, HEAD на момент =
+    `d5e6fe0`), venv + requirements. PostgreSQL: роль `vkbot` + база `vk_auto_bot` (только
+    127.0.0.1), пароль БД в `.env`. `.env` собран (DATABASE_URL, свежие SESSION_SECRET/SECRETS_KEY,
+    ADMIN_PASSWORD_HASH из пароля, заданного заказчиком (plaintext НЕ храним), GOOGLE_SA_JSON залит в
+    `/opt/vk_auto_bot/secrets/`, PUBLIC_BASE_URL ПУСТОЙ — внутренние таблицы отключены). `alembic
+    upgrade head` = **0010_numbers_shortfall** на чистой БД (8 таблиц). systemd `admin-web`+`vk-bot`
+    (enable+start, оба active; у бота супервизор сам подхватит VK-токен из БД, интервал 10с).
+  - **TLS-РЕШЕНИЕ ЗАКАЗЧИКА (важно):** домена НЕТ; «только админка, максимально безопасно, через
+    HTTPS». Публичные таблицы — ТОЛЬКО Google Sheets, внутренние `/p/` ОТКЛЮЧЕНЫ. Caddy на **:443
+    с `tls internal`** (самоподписанный серт; браузер 1 раз ругнётся → «всё равно перейти»),
+    `default_sni 37.230.192.61` (ОБЯЗАТЕЛЬНО — браузер/curl не шлют SNI для голого IP, без этого
+    handshake = `internal error`), `handle /p/* { respond 404 }`. В коде `https_only=True`.
+    `/etc/caddy/Caddyfile` = копия `caddy/vk_admin.caddy` из репо. **Открыт только порт 443** (22
+    для админа; 80 Caddy слушает для авто-редиректа, но снаружи закрыт — не нужен).
+  - **ПРОВЕРЕНО (smoke по HTTPS, curl --resolve на 127.0.0.1):** `GET /login`=200; реальный вход
+    `POST /login` (admin/пароль)=303, cookie `session=…; httponly; samesite=lax; Secure`;
+    авторизованный `GET /`=200; неверный пароль=401; `/p/1`=404; security-заголовки на месте
+    (CSP, X-Frame-Options SAMEORIGIN, nosniff, referrer/permissions-policy); один `Server: web`.
+    Сертификат — `Caddy Local Authority`. Сервисы admin-web/caddy/vk-bot = active.
+  - **❗ОСТАЛОСЬ ЗАКАЗЧИКУ (передать):** (1) ОСТАНОВИТЬ старый сервер 185.228.72.118 (бот!) ДО ввода
+    VK-токена здесь — один токен нельзя слушать двумя ботами (конфликт Long Poll); (2) зайти на
+    `https://37.230.192.61` (логин `admin`, пароль — тот, что заказчик задал при деплое), принять самоподписанный серт;
+    (3) в `/settings` ввести VK-токен + Google (sheets_owner_email) и нажать «Проверить»; бот
+    подхватит токен сам. (4) ДАННЫЕ НЕ переносились — БД чистая (по решению заказчика).
+  - **ОСТАТОЧНЫЕ РИСКИ (за заказчиком):** самоподписанный TLS (для доверенного — нужен домен);
+    SSH — парольная/ключевая auth и ограничение порта 22 на IP в security group cloud.ru;
+    fail2ban на новом сервере НЕ ставился (был на старом) — при желании поставить.
 - **2026-06-28. ФИКС (коммит `5e2db44`): харднинг сломал превью PDF-чека в модерации.**
   `X-Frame-Options=DENY` + CSP `frame-ancestors 'none'` блокировали `<iframe src="/moderation/{id}/receipt">`
   (браузер: «отказано в подключении»). Исправлено на `SAMEORIGIN` / `frame-ancestors 'self'` (свой
@@ -809,6 +849,11 @@
 
 ## Следующий шаг
 
+- **✅ НОВЫЙ БОЕВОЙ СЕРВЕР cloud.ru РАЗВЁРНУТ С НУЛЯ (2026-06-28)** — `https://37.230.192.61`,
+  HTTPS (tls internal), pytest зелёный, smoke по HTTPS пройден. См. «Текущая точка».
+  **ЖДЁМ ДЕЙСТВИЙ ЗАКАЗЧИКА:** (1) остановить старый бот на 185.228.72.118 (конфликт Long Poll);
+  (2) войти в админку и ввести VK-токен + Google в `/settings`; (3) после проверки — старый сервер
+  можно гасить полностью. БД на новом — чистая (данные не переносили по решению заказчика).
 - **✅ ДЕПЛОЙ ФАЗЫ 9 ВЫПОЛНЕН (2026-06-28)** — миграция 0010 применена, спам `Numbers exhausted`
   исчез на проде. **✅ SECURITY-АУДИТ И ХАРДНИНГ ВЫПОЛНЕНЫ** (коммит `3689aba`, см. «Текущая точка»).
 - **ОСТАТОЧНЫЕ РИСКИ БЕЗОПАСНОСТИ — за заказчиком (требуют домена/консоли cloud.ru):** (1) подключить
@@ -869,6 +914,28 @@
 
 ## Нюансы (грабли, лимиты, особенности — пополняется по ходу)
 
+- **НОВЫЙ БОЕВОЙ СЕРВЕР cloud.ru (2026-06-28) — рецепты деплоя/доступа:**
+  - **Доступ:** `ssh -i "A:\DevAI\Zakazi\ыыр\auto_bot\id_rsa" auto@37.230.192.61`, sudo
+    БЕСПАРОЛЬНЫЙ (`sudo` напрямую, без `sudo su`). Ключ копировать в `/tmp/vk_id_rsa` + `chmod 600`
+    (домашний путь с кириллицей ломает known_hosts — добавлять `-o UserKnownHostsFile=/dev/null
+    -o StrictHostKeyChecking=no`). **Старый `ssh.md`/`scripts/_ssh_run.py` — про СТАРЫЙ сервер
+    185.228.72.118, тут НЕ применимы.**
+  - **СЕТЬ ФЛАПАЕТ:** и SSH (порт 22 то ок, то таймаут), и исходящий с сервера (github/apt/
+    keyserver временами отваливаются по таймауту). ВСЕ ssh- и git-команды оборачивать в ретраи
+    (на сервере: `for i in 1..6; do git pull && break; sleep 5; done`). ⚠️ ГРАБЛИ: если `git pull`
+    упал, НЕ копировать `caddy/vk_admin.caddy`→`/etc/caddy/Caddyfile` (затрёшь рабочий конфиг
+    старой версией). Перед `cp` проверять `git rev-parse --short HEAD` == целевой коммит.
+  - **apt:** штатное зеркало `mirror.yandex.ru:80` НЕДОСТУПНО (порт 80) → переключено на
+    `https://archive.ubuntu.com` (`/etc/apt/sources.list`); IPv6 нет → `Acquire::ForceIPv4`
+    в `/etc/apt/apt.conf.d/99force-ipv4`. Предуст. cloud.ru-репо `vmmanager-osconfig` таймаутит —
+    безвредно (apt игнорит).
+  - **Python 3.12 через deadsnakes ВРУЧНУЮ:** `add-apt-repository ppa:deadsnakes/ppa` ПАДАЕТ
+    (лезет в `api.launchpad.net` — закрыт), хотя контент `ppa.launchpadcontent.net` (443) открыт.
+    Решение: ключ `curl "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776" | gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg`
+    + `deb [signed-by=…] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu/ jammy main`.
+  - **Caddy `tls internal` на голом IP:** ОБЯЗАТЕЛЕН `default_sni 37.230.192.61` в глобальном
+    блоке Caddyfile — браузер/curl не шлют SNI для IP (RFC 6066), без него handshake = TLS
+    `internal error`. Тестить: `curl -k --resolve 37.230.192.61:443:127.0.0.1 https://37.230.192.61/...`.
 - **SECURITY-харднинг (2026-06-28):** защита админки — `app/admin/security.py`
   (`SecurityHeadersMiddleware` + in-memory rate-limit логина по IP). CSP включает
   `'unsafe-inline'` для script/style — в шаблонах есть инлайн-`onclick` (тема, клик по строке
