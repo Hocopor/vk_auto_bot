@@ -4,6 +4,12 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 from passlib.context import CryptContext
 
+from app.admin.security import (
+    client_ip,
+    is_login_blocked,
+    record_login_failure,
+    reset_login_failures,
+)
 from app.admin.templating import templates
 from app.core.config import settings
 
@@ -34,9 +40,23 @@ async def login_form(request: Request):
 
 @router.post("/login")
 async def login_submit(request: Request, login: str = Form(...), password: str = Form(...)):
+    ip = client_ip(request)
+    if is_login_blocked(ip):
+        logger.warning("Login rate-limited for ip=%s", ip)
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "Слишком много попыток входа. Подождите несколько минут.",
+            },
+            status_code=429,
+        )
     if verify_credentials(login, password):
+        reset_login_failures(ip)
         request.session["user"] = login
         return RedirectResponse(url="/", status_code=303)
+    record_login_failure(ip)
+    logger.warning("Failed login attempt for login=%r from ip=%s", login, ip)
     return templates.TemplateResponse(
         "login.html",
         {"request": request, "error": "Неверный логин или пароль"},
